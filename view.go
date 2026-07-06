@@ -89,6 +89,7 @@ func (m Model) View() tea.View {
 			}
 			b.WriteString(scrollbarCharAt(row, contentH, m.yOffset, m.totalLines))
 		}
+		b.WriteString("\033[0m")
 	}
 
 	b.WriteByte('\n')
