@@ -142,6 +142,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selection.Selecting = true
 				m.selection.Active = false
 				m.gutterSelect = true
+				m.gutterAnchor = contentRow
 				m.lastClickRow = contentRow
 				m.lastClickCol = 0
 				m.lastClickTime = time.Now()
@@ -218,8 +219,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			contentRow := m.yOffset + row
 
 			if m.gutterSelect {
-				sr, _, _, _ := m.selection.Bounds()
-				if contentRow < sr {
+				if contentRow < m.gutterAnchor {
 					m.selection.StartRow = contentRow
 					m.selection.StartCol = 0
 				} else {

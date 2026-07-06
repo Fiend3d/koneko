@@ -24,6 +24,7 @@ type Model struct {
 	showScrollbar  bool
 	scrollbarDrag  bool
 	gutterSelect   bool
+	gutterAnchor   int
 	highlight      bool
 	tabWidth       int
 	lastClickRow   int
