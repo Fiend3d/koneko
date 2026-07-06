@@ -42,12 +42,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.yOffset > 0 {
 				m.yOffset--
 				m.clampOffset()
+				return m, m.triggerHighlight()
 			}
 		case "down", "j":
 			if m.yOffset < m.totalLines-m.contentHeight() {
 				m.yOffset++
 				m.clampOffset()
-				return m, nil
+				return m, m.triggerHighlight()
 			}
 		case "left":
 			if m.xOffset > 0 {
@@ -113,6 +114,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.triggerHighlight()
 			}
 			return m, nil
+		case "H":
+			m.xOffset = 0
 		}
 
 	case tea.MouseClickMsg:

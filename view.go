@@ -97,7 +97,7 @@ func (m Model) View() tea.View {
 	}
 
 	b.WriteByte('\n')
-	b.WriteString(renderStatusBar(m.width, m.filePath, m.yOffset, m.contentHeight(), m.totalLines, m.selection))
+	b.WriteString(renderStatusBar(m.width, m.filePath, m.yOffset, m.contentHeight(), m.totalLines, m.xOffset, m.selection))
 
 	v.SetContent(b.String())
 	return v
@@ -233,9 +233,12 @@ func ansiStateAt(s string, visualPos int) string {
 	return active.String()
 }
 
-func renderStatusBar(w int, filePath string, yOffset, contentH, totalLines int, sel Selection) string {
+func renderStatusBar(w int, filePath string, yOffset, contentH, totalLines int, xOffset int, sel Selection) string {
 	name := filepath.Base(filePath)
 	lineInfo := fmt.Sprintf("%d/%d", yOffset+contentH, totalLines)
+	if xOffset > 0 {
+		lineInfo += fmt.Sprintf("  +%d", xOffset)
+	}
 
 	selInfo := ""
 	if sel.Active || sel.Selecting {
