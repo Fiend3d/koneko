@@ -8,8 +8,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-var lastWheelTime time.Time
-
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case fileLoadedMsg:
@@ -38,6 +36,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
+			if m.fileBuf != nil {
+				m.fileBuf.Close()
+			}
 			return m, tea.Quit
 		case "up", "k":
 			if m.yOffset > 0 {
@@ -272,7 +273,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.yOffset += step
 			m.clampOffset()
 		}
-		lastWheelTime = time.Now()
+		m.lastWheelTime = time.Now()
 		if !m.hlCoversVisible() {
 			return m, m.debouncedHighlight()
 		}
@@ -305,7 +306,7 @@ func (m *Model) debouncedHighlight() tea.Cmd {
 	}
 	return func() tea.Msg {
 		time.Sleep(80 * time.Millisecond)
-		if time.Since(lastWheelTime) < 80*time.Millisecond {
+		if time.Since(m.lastWheelTime) < 80*time.Millisecond {
 			return nil
 		}
 		m.highlighter.HighlightRange(text, ctxFrom)

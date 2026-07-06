@@ -31,6 +31,7 @@ type Model struct {
 	lastClickRow   int
 	lastClickCol   int
 	lastClickTime  time.Time
+	lastWheelTime  time.Time
 }
 
 func initialModel(filePath string, tabWidth int, showLineNum bool, showScrollbar bool, highlight bool) Model {

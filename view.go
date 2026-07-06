@@ -249,13 +249,15 @@ func renderStatusBar(w int, filePath string, yOffset, contentH, totalLines int, 
 	leftText := name + selInfo
 	rightText := lineInfo
 	leftText = truncateString(leftText, (w-2)/2)
+	rightText = truncateString(rightText, (w-2)/2)
 	mid := w - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
 	if mid < 0 {
 		leftText = truncateString(leftText, max(0, w-2-ansi.StringWidth(rightText)-3)) + "..."
 		mid = w - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
-	}
-	if mid < 0 {
-		mid = 0
+		if mid < 0 {
+			rightText = truncateString(rightText, max(0, w-2-ansi.StringWidth(leftText)-3)) + "..."
+			mid = w - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
+		}
 	}
 
 	bar := leftText + strings.Repeat(" ", mid) + rightText
