@@ -50,7 +50,10 @@ func (m Model) View() tea.View {
 		}
 		if row < len(lines) {
 			lineNum := from + row
-			styled := m.highlighter.StyledLine(lineNum)
+			var styled string
+			if m.highlight {
+				styled = m.highlighter.StyledLine(lineNum)
+			}
 			if styled == "" {
 				styled = strings.ReplaceAll(lines[row], "\r", "")
 			}

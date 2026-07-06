@@ -85,6 +85,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showLineNum = !m.showLineNum
 		case "s":
 			m.showScrollbar = !m.showScrollbar
+		case "h":
+			m.highlight = !m.highlight
+			if m.highlight {
+				return m, m.triggerHighlight()
+			}
 		}
 
 	case tea.MouseClickMsg:
@@ -229,6 +234,9 @@ func (m *Model) scrollToRow(mouseY int) {
 }
 
 func (m *Model) ensureHighlighted() {
+	if !m.highlight {
+		return
+	}
 	from, to := m.visibleLineRange()
 	if from >= to {
 		return
@@ -253,6 +261,9 @@ func (m *Model) ensureHighlighted() {
 }
 
 func (m *Model) triggerHighlight() tea.Cmd {
+	if !m.highlight {
+		return nil
+	}
 	return func() tea.Msg {
 		m.ensureHighlighted()
 		return highlightReadyMsg{}

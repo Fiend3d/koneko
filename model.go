@@ -23,17 +23,19 @@ type Model struct {
 	showLineNum    bool
 	showScrollbar  bool
 	scrollbarDrag  bool
+	highlight      bool
 	tabWidth       int
 	lastClickRow   int
 	lastClickCol   int
 	lastClickTime  time.Time
 }
 
-func initialModel(filePath string, tabWidth int, showLineNum bool, showScrollbar bool) Model {
+func initialModel(filePath string, tabWidth int, showLineNum bool, showScrollbar bool, highlight bool) Model {
 	return Model{
 		filePath:      filePath,
 		showLineNum:   showLineNum,
 		showScrollbar: showScrollbar,
+		highlight:     highlight,
 		tabWidth:      tabWidth,
 	}
 }
