@@ -92,7 +92,7 @@ func (m Model) View() tea.View {
 	}
 
 	b.WriteByte('\n')
-	b.WriteString(renderStatusBar(m.width-1, m.filePath, m.yOffset, m.contentHeight(), m.totalLines, m.selection))
+	b.WriteString(renderStatusBar(m.width, m.filePath, m.yOffset, m.contentHeight(), m.totalLines, m.selection))
 
 	v.SetContent(b.String())
 	return v
@@ -240,18 +240,18 @@ func renderStatusBar(w int, filePath string, yOffset, contentH, totalLines int, 
 
 	leftText := name + selInfo
 	rightText := lineInfo
-	leftText = truncateString(leftText, w/2)
-	mid := w - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
+	leftText = truncateString(leftText, (w-2)/2)
+	mid := w - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
 	if mid < 0 {
-		leftText = truncateString(leftText, max(0, w-ansi.StringWidth(rightText)-3)) + "..."
-		mid = w - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
+		leftText = truncateString(leftText, max(0, w-2-ansi.StringWidth(rightText)-3)) + "..."
+		mid = w - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
 	}
 	if mid < 0 {
 		mid = 0
 	}
 
 	bar := leftText + strings.Repeat(" ", mid) + rightText
-	return styleStatusBar.Render(bar)
+	return styleStatusBar.Render(" " + bar + " ")
 }
 
 func truncateString(s string, maxLen int) string {

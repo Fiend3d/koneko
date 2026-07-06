@@ -6,8 +6,8 @@ import (
 
 var (
 	styleStatusBar = lipgloss.NewStyle().
-			Background(lipgloss.NoColor{}).
-			Foreground(lipgloss.NoColor{})
+			Background(lipgloss.BrightBlack).
+			Foreground(lipgloss.White)
 
 	styleSelection = lipgloss.NewStyle().
 			Background(lipgloss.White).
