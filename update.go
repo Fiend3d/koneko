@@ -49,6 +49,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.clampOffset()
 				return m, nil
 			}
+		case "left":
+			if m.xOffset > 0 {
+				m.xOffset--
+			}
+		case "right":
+			m.xOffset++
 		case "pgup":
 			step := m.contentHeight() / 2
 			m.yOffset -= step
@@ -153,22 +159,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 		contentRow := m.yOffset + row
+		contentCol := col + m.xOffset
 
 		if mouse.Button == tea.MouseRight {
 			if !m.selection.Active && !m.selection.Selecting {
 				m.selection.StartRow = contentRow
-				m.selection.StartCol = col
+				m.selection.StartCol = contentCol
 				m.selection.EndRow = contentRow
-				m.selection.EndCol = col
+				m.selection.EndCol = contentCol
 			} else {
 				sr, sc, er, ec := m.selection.Bounds()
-				nearStart := (contentRow-sr)*(contentRow-sr)+(col-sc)*(col-sc) <= (contentRow-er)*(contentRow-er)+(col-ec)*(col-ec)
+				nearStart := (contentRow-sr)*(contentRow-sr)+(contentCol-sc)*(contentCol-sc) <= (contentRow-er)*(contentRow-er)+(contentCol-ec)*(contentCol-ec)
 				if nearStart {
 					m.selection.StartRow = contentRow
-					m.selection.StartCol = col
+					m.selection.StartCol = contentCol
 				} else {
 					m.selection.EndRow = contentRow
-					m.selection.EndCol = col
+					m.selection.EndCol = contentCol
 				}
 			}
 			m.selection.Selecting = false
@@ -181,7 +188,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if contentRow == m.lastClickRow && col == m.lastClickCol && now.Sub(m.lastClickTime) < 500*time.Millisecond {
 				line, err := m.fileBuf.Line(contentRow)
 				if err == nil {
-					start, end := findWordBounds(line, col, m.tabWidth)
+					start, end := findWordBounds(line, contentCol, m.tabWidth)
 					if start < end {
 						m.selection.Begin(contentRow, start)
 						m.selection.Extend(contentRow, end)
@@ -193,7 +200,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lastClickRow = contentRow
 				m.lastClickCol = col
 				m.lastClickTime = now
-				m.selection.Begin(contentRow, col)
+				m.selection.Begin(contentRow, contentCol)
 			}
 		}
 
@@ -217,6 +224,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				row = 0
 			}
 			contentRow := m.yOffset + row
+			contentCol := col + m.xOffset
 
 			if m.gutterSelect {
 				if contentRow < m.gutterAnchor {
@@ -240,7 +248,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if col < 0 {
 				col = 0
 			}
-			m.selection.Extend(contentRow, col)
+			m.selection.Extend(contentRow, contentCol)
 		}
 
 	case tea.MouseReleaseMsg:

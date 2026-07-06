@@ -13,6 +13,7 @@ type Model struct {
 	fileBuf        *FileBuffer
 	totalLines     int
 	yOffset        int
+	xOffset        int
 	width          int
 	height         int
 	selection      Selection

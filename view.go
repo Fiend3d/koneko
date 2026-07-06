@@ -81,7 +81,7 @@ func (m Model) View() tea.View {
 				}
 			}
 
-			lineContent = truncateString(styled, w)
+			lineContent = ansi.Cut(styled, m.xOffset, m.xOffset+w)
 			b.WriteString(lineContent)
 		} else if m.showLineNum {
 			b.WriteString(strings.Repeat(" ", gutter))
