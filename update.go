@@ -283,12 +283,28 @@ func (m Model) hlCoversVisible() bool {
 }
 
 func (m *Model) debouncedHighlight() tea.Cmd {
+	from, to := m.visibleLineRange()
+	if from >= to {
+		return nil
+	}
+	ctxFrom := from - contextLines
+	if ctxFrom < 0 {
+		ctxFrom = 0
+	}
+	ctxTo := to + contextLines
+	if ctxTo > m.totalLines {
+		ctxTo = m.totalLines
+	}
+	text, err := m.fileBuf.Text(ctxFrom, ctxTo)
+	if err != nil {
+		return nil
+	}
 	return func() tea.Msg {
 		time.Sleep(80 * time.Millisecond)
 		if time.Since(lastWheelTime) < 80*time.Millisecond {
 			return nil
 		}
-		m.ensureHighlighted()
+		m.highlighter.HighlightRange(text, ctxFrom)
 		return highlightReadyMsg{}
 	}
 }
@@ -346,8 +362,27 @@ func (m *Model) triggerHighlight() tea.Cmd {
 	if !m.highlight {
 		return nil
 	}
+	from, to := m.visibleLineRange()
+	if from >= to {
+		return nil
+	}
+	if m.highlightRange[0] <= from && m.highlightRange[1] >= to {
+		return nil
+	}
+	ctxFrom := from - contextLines
+	if ctxFrom < 0 {
+		ctxFrom = 0
+	}
+	ctxTo := to + contextLines
+	if ctxTo > m.totalLines {
+		ctxTo = m.totalLines
+	}
+	text, err := m.fileBuf.Text(ctxFrom, ctxTo)
+	if err != nil {
+		return nil
+	}
 	return func() tea.Msg {
-		m.ensureHighlighted()
+		m.highlighter.HighlightRange(text, ctxFrom)
 		return highlightReadyMsg{}
 	}
 }
