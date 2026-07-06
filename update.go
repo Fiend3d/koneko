@@ -154,7 +154,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		contentRow := m.yOffset + row
 
 		if mouse.Button == tea.MouseRight {
-			m.selection.Extend(contentRow, col)
+			if !m.selection.Active && !m.selection.Selecting {
+				m.selection.StartRow = contentRow
+				m.selection.StartCol = col
+				m.selection.EndRow = contentRow
+				m.selection.EndCol = col
+			} else {
+				sr, sc, er, ec := m.selection.Bounds()
+				nearStart := (contentRow-sr)*(contentRow-sr)+(col-sc)*(col-sc) <= (contentRow-er)*(contentRow-er)+(col-ec)*(col-ec)
+				if nearStart {
+					m.selection.StartRow = contentRow
+					m.selection.StartCol = col
+				} else {
+					m.selection.EndRow = contentRow
+					m.selection.EndCol = col
+				}
+			}
+			m.selection.Selecting = false
+			m.selection.Active = true
 			break
 		}
 
