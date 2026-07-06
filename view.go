@@ -59,23 +59,31 @@ func (m Model) View() tea.View {
 			}
 			styled = expandTabs(styled, m.tabWidth)
 
-			if m.showLineNum {
-				numStr := fmt.Sprintf("%*d ", gutter-1, lineNum+1)
-				b.WriteString(styleLineNum.Render(numStr))
-			}
-
+			inSelection := false
 			if m.selection.Active || m.selection.Selecting {
 				sr, sc, er, ec := m.selection.Bounds()
 				if lineNum >= sr && lineNum <= er {
+					inSelection = true
 					styled = applyLineSelection(styled, lineNum, sr, sc, er, ec)
+				}
+			}
+
+			if m.showLineNum {
+				numStr := fmt.Sprintf("%*d ", gutter-1, lineNum+1)
+				if inSelection {
+					b.WriteString(styleLineNumSel.Render(numStr))
+				} else {
+					b.WriteString(styleLineNum.Render(numStr))
 				}
 			}
 
 			lineContent = truncateString(styled, w)
 			b.WriteString(lineContent)
+		} else if m.showLineNum {
+			b.WriteString(strings.Repeat(" ", gutter))
 		}
 		if m.showScrollbar {
-			lineVis := ansi.StringWidth(lineContent)
+			lineVis := ansi.StringWidth(ansi.Strip(lineContent))
 			if pad := w - lineVis; pad > 0 {
 				b.WriteString(strings.Repeat(" ", pad))
 			}
@@ -84,7 +92,7 @@ func (m Model) View() tea.View {
 	}
 
 	b.WriteByte('\n')
-	b.WriteString(renderStatusBar(w, m.filePath, m.yOffset, m.contentHeight(), m.totalLines, m.selection))
+	b.WriteString(renderStatusBar(m.width-1, m.filePath, m.yOffset, m.contentHeight(), m.totalLines, m.selection))
 
 	v.SetContent(b.String())
 	return v

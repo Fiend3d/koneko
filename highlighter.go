@@ -99,7 +99,6 @@ func (h *Highlighter) styleLine(tokens []chroma.Token) string {
 		open := ansiEscape(entry)
 		b.WriteString(open)
 		b.WriteString(value)
-		b.WriteString("\033[0m")
 	}
 	return b.String()
 }
