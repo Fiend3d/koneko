@@ -5,6 +5,7 @@ import (
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var lastWheelTime time.Time
@@ -446,7 +447,7 @@ func visualLineWidth(line string, tabWidth int) int {
 }
 
 func findWordBounds(line string, col int, tabWidth int) (int, int) {
-	expanded := expandTabs(line, tabWidth)
+	expanded := ansi.Strip(expandTabs(line, tabWidth))
 	if col >= len(expanded) {
 		col = len(expanded)
 		if col == 0 {

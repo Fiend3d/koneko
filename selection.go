@@ -80,6 +80,9 @@ func extractText(lines []string, sr, sc, er, ec int) string {
 				if end > len(line) {
 					end = len(line)
 				}
+				if sc > end {
+					sc, end = end, sc
+				}
 				b.WriteString(line[sc:end])
 			}
 		}
@@ -98,6 +101,9 @@ func extractText(lines []string, sr, sc, er, ec int) string {
 				if end > len(line) {
 					end = len(line)
 				}
+				if end < 0 {
+					end = 0
+				}
 				if end > 0 {
 					b.WriteString(line[:end])
 				}
@@ -110,14 +116,6 @@ func extractText(lines []string, sr, sc, er, ec int) string {
 		}
 	}
 	return b.String()
-}
-
-func (s *Selection) Text(lines []string) string {
-	if !s.Active {
-		return ""
-	}
-	sr, sc, er, ec := s.Bounds()
-	return extractText(lines, sr, sc, er, ec)
 }
 
 func (s *Selection) Clear() {
