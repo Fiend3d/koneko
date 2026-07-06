@@ -120,7 +120,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		col := mouse.X - m.lineNumWidth()
-		if row >= m.contentHeight() || col >= m.width {
+		contentWidth := m.width - m.lineNumWidth()
+		if m.showScrollbar {
+			contentWidth--
+		}
+		if row >= m.contentHeight() || col >= contentWidth {
 			break
 		}
 		if col < 0 {
@@ -163,14 +167,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			mouse := msg.Mouse()
 			row := mouse.Y
 			col := mouse.X - m.lineNumWidth()
+			contentWidth := m.width - m.lineNumWidth()
+			if m.showScrollbar {
+				contentWidth--
+			}
 			if row >= m.contentHeight() {
 				row = m.contentHeight() - 1
 			}
 			if row < 0 {
 				row = 0
 			}
-			if col > m.width {
-				col = m.width
+			if col > contentWidth {
+				col = contentWidth
 			}
 			if col < 0 {
 				col = 0
