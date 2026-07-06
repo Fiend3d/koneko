@@ -23,6 +23,7 @@ type Model struct {
 	showLineNum    bool
 	showScrollbar  bool
 	scrollbarDrag  bool
+	gutterSelect   bool
 	highlight      bool
 	tabWidth       int
 	lastClickRow   int

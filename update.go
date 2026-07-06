@@ -124,11 +124,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showScrollbar {
 			contentWidth--
 		}
-		if row >= m.contentHeight() || col >= contentWidth {
+		if row >= m.contentHeight() {
 			break
 		}
 		if col < 0 {
-			col = 0
+			if mouse.Button == tea.MouseLeft {
+				contentRow := m.yOffset + row
+				line, err := m.fileBuf.Line(contentRow)
+				width := 0
+				if err == nil {
+					width = visualLineWidth(line, m.tabWidth)
+				}
+				m.selection.StartRow = contentRow
+				m.selection.StartCol = 0
+				m.selection.EndRow = contentRow
+				m.selection.EndCol = width
+				m.selection.Selecting = true
+				m.selection.Active = false
+				m.gutterSelect = true
+				m.lastClickRow = contentRow
+				m.lastClickCol = 0
+				m.lastClickTime = time.Now()
+			}
+			break
+		}
+		if col >= contentWidth {
+			break
 		}
 		contentRow := m.yOffset + row
 
@@ -177,18 +198,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if row < 0 {
 				row = 0
 			}
+			contentRow := m.yOffset + row
+
+			if m.gutterSelect {
+				sr, _, _, _ := m.selection.Bounds()
+				if contentRow < sr {
+					m.selection.StartRow = contentRow
+					m.selection.StartCol = 0
+				} else {
+					line, err := m.fileBuf.Line(contentRow)
+					width := 0
+					if err == nil {
+						width = visualLineWidth(line, m.tabWidth)
+					}
+					m.selection.EndRow = contentRow
+					m.selection.EndCol = width
+				}
+				break
+			}
+
 			if col > contentWidth {
 				col = contentWidth
 			}
 			if col < 0 {
 				col = 0
 			}
-			contentRow := m.yOffset + row
 			m.selection.Extend(contentRow, col)
 		}
 
 	case tea.MouseReleaseMsg:
 		m.scrollbarDrag = false
+		m.gutterSelect = false
 		m.selection.End()
 
 	case tea.MouseWheelMsg:
