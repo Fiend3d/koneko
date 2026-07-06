@@ -32,7 +32,11 @@ func (m Model) View() tea.View {
 	from, to := m.visibleLineRange()
 	contentH := m.contentHeight()
 	gutter := m.lineNumWidth()
-	w := m.width - 1 - gutter
+	scrollbarCol := 0
+	if m.showScrollbar {
+		scrollbarCol = 1
+	}
+	w := m.width - scrollbarCol - gutter
 
 	lines, err := m.fileBuf.Lines(from, to)
 	if err != nil {
