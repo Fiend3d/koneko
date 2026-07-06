@@ -66,7 +66,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.yOffset = m.totalLines - m.contentHeight()
 			m.clampOffset()
 			return m, m.triggerHighlight()
-		case "c":
+		case "a":
+			lastLine, err := m.fileBuf.Line(m.totalLines - 1)
+			lastCol := 0
+			if err == nil {
+				lastCol = visualLineWidth(lastLine, m.tabWidth)
+			}
+			m.selection.StartRow = 0
+			m.selection.StartCol = 0
+			m.selection.EndRow = m.totalLines - 1
+			m.selection.EndCol = lastCol
+			m.selection.Active = true
+			m.selection.Selecting = false
+		case "d":
+			m.selection.Clear()
 			if m.selection.Active {
 				return m, m.copySelection()
 			}
