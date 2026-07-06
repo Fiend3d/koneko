@@ -270,20 +270,16 @@ func (m Model) lineNumWidth() int {
 
 func scrollbarCharAt(row, contentH, yOffset, totalLines int) string {
 	if totalLines <= contentH {
-		return " "
+		return styleScrollbar.Render(" ")
 	}
+	maxOffset := totalLines - contentH
 	thumbH := contentH * contentH / totalLines
 	if thumbH < 1 {
 		thumbH = 1
 	}
-	maxOffset := totalLines - contentH
-	trackH := contentH - thumbH
-	if trackH <= 0 {
-		return " "
-	}
-	thumbPos := yOffset * trackH / maxOffset
+	thumbPos := yOffset * (contentH - thumbH) / maxOffset
 	if row >= thumbPos && row < thumbPos+thumbH {
 		return styleScrollbar.Render("█")
 	}
-	return " "
+	return styleScrollbar.Render(" ")
 }

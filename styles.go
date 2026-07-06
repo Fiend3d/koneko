@@ -15,5 +15,7 @@ var (
 
 	styleLineNum = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
 
-	styleScrollbar = lipgloss.NewStyle().Foreground(lipgloss.White)
+	styleScrollbar = lipgloss.NewStyle().
+			Background(lipgloss.BrightBlack).
+			Foreground(lipgloss.White)
 )

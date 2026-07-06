@@ -220,16 +220,8 @@ func (m *Model) scrollToRow(mouseY int) {
 	if m.totalLines <= m.contentHeight() {
 		return
 	}
-	thumbH := m.contentHeight() * m.contentHeight() / m.totalLines
-	if thumbH < 1 {
-		thumbH = 1
-	}
-	trackH := m.contentHeight() - thumbH
-	if trackH <= 0 {
-		return
-	}
 	maxOffset := m.totalLines - m.contentHeight()
-	m.yOffset = mouseY * maxOffset / trackH
+	m.yOffset = mouseY * maxOffset / (m.contentHeight() - 1)
 	m.clampOffset()
 }
 
