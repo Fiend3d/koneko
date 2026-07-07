@@ -13,15 +13,16 @@ func main() {
 	noLineNumbers := flag.Bool("no-line-numbers", false, "hide line numbers")
 	noScrollbar := flag.Bool("no-scrollbar", false, "hide scrollbar")
 	noHighlight := flag.Bool("no-highlight", false, "disable syntax highlighting")
+	searchStr := flag.String("search", "", "search string")
 	flag.Parse()
 
 	if flag.NArg() < 1 {
-		fmt.Fprintf(os.Stderr, "Usage: koneko [-tab-width=N] [-no-line-numbers] [-no-scrollbar] [-no-highlight] <file>\n")
+		fmt.Fprintf(os.Stderr, "Usage: koneko [-tab-width=N] [-no-line-numbers] [-no-scrollbar] [-no-highlight] [-search=STRING] <file>\n")
 		os.Exit(1)
 	}
 	filePath := flag.Arg(0)
 
-	p := tea.NewProgram(initialModel(filePath, *tabWidth, !*noLineNumbers, !*noScrollbar, !*noHighlight))
+	p := tea.NewProgram(initialModel(filePath, *tabWidth, !*noLineNumbers, !*noScrollbar, !*noHighlight, *searchStr))
 
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

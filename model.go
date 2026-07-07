@@ -28,19 +28,21 @@ type Model struct {
 	gutterAnchor   int
 	highlight      bool
 	tabWidth       int
+	searchStr      string
 	lastClickRow   int
 	lastClickCol   int
 	lastClickTime  time.Time
 	lastWheelTime  time.Time
 }
 
-func initialModel(filePath string, tabWidth int, showLineNum bool, showScrollbar bool, highlight bool) Model {
+func initialModel(filePath string, tabWidth int, showLineNum bool, showScrollbar bool, highlight bool, searchStr string) Model {
 	return Model{
 		filePath:      filePath,
 		showLineNum:   showLineNum,
 		showScrollbar: showScrollbar,
 		highlight:     highlight,
 		tabWidth:      tabWidth,
+		searchStr:     searchStr,
 	}
 }
 

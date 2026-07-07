@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 	"unicode"
 
@@ -128,6 +129,54 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "H":
 			m.xOffset = 0
+			return m, nil
+		case "n":
+			if m.searchStr == "" || m.fileBuf == nil {
+				return m, nil
+			}
+			er, ec := m.yOffset, -1
+			if m.selection.Active {
+				_, _, er, ec = m.selection.Bounds()
+			}
+			row, col, found := m.findNext(er, ec+1)
+			if !found && m.selection.Active {
+				row, col, found = m.findNext(0, 0)
+			}
+			if found {
+				m.selection.Clear()
+				m.selection.Begin(row, col)
+				m.selection.Extend(row, col+len(m.searchStr))
+				m.selection.End()
+				m.scrollToShowMatch(row)
+				return m, m.triggerHighlight()
+			}
+			return m, nil
+		case "N":
+			if m.searchStr == "" || m.fileBuf == nil {
+				return m, nil
+			}
+			sr, sc := m.yOffset, 0
+			if m.selection.Active {
+				sr, sc, _, _ = m.selection.Bounds()
+				sc--
+			}
+			row, col, found := m.findPrev(sr, sc)
+			if !found && m.selection.Active {
+				sr = m.totalLines - 1
+				lastLine, err := m.fileBuf.Line(sr)
+				if err == nil {
+					sc = visualLineWidth(lastLine, m.tabWidth)
+				}
+				row, col, found = m.findPrev(sr, sc)
+			}
+			if found {
+				m.selection.Clear()
+				m.selection.Begin(row, col)
+				m.selection.Extend(row, col+len(m.searchStr))
+				m.selection.End()
+				m.scrollToShowMatch(row)
+				return m, m.triggerHighlight()
+			}
 			return m, nil
 		}
 
@@ -444,6 +493,68 @@ func visualToRawCol(line string, visualCol int, tabWidth int) int {
 		raw++
 	}
 	return raw
+}
+
+func (m *Model) findNext(fromRow, fromCol int) (int, int, bool) {
+	allLines, err := m.fileBuf.Lines(0, m.totalLines)
+	if err != nil || m.searchStr == "" {
+		return 0, 0, false
+	}
+	searchLower := strings.ToLower(m.searchStr)
+	for row := fromRow; row < len(allLines); row++ {
+		line := expandTabs(allLines[row], m.tabWidth)
+		searchIn := line
+		offset := 0
+		if row == fromRow {
+			if fromCol >= len(line) {
+				continue
+			}
+			searchIn = line[fromCol:]
+			offset = fromCol
+		}
+		lineLower := strings.ToLower(searchIn)
+		idx := strings.Index(lineLower, searchLower)
+		if idx != -1 {
+			return row, offset + idx, true
+		}
+	}
+	return 0, 0, false
+}
+
+func (m *Model) findPrev(fromRow, fromCol int) (int, int, bool) {
+	if fromCol < 0 {
+		fromCol = 0
+	}
+	allLines, err := m.fileBuf.Lines(0, m.totalLines)
+	if err != nil || m.searchStr == "" {
+		return 0, 0, false
+	}
+	searchLower := strings.ToLower(m.searchStr)
+	for row := fromRow; row >= 0; row-- {
+		line := expandTabs(allLines[row], m.tabWidth)
+		searchIn := line
+		if row == fromRow {
+			if fromCol > len(line) {
+				fromCol = len(line)
+			}
+			searchIn = line[:fromCol]
+		}
+		lineLower := strings.ToLower(searchIn)
+		idx := strings.LastIndex(lineLower, searchLower)
+		if idx != -1 {
+			return row, idx, true
+		}
+	}
+	return 0, 0, false
+}
+
+func (m *Model) scrollToShowMatch(row int) {
+	targetY := row - m.contentHeight()/3
+	if targetY < 0 {
+		targetY = 0
+	}
+	m.yOffset = targetY
+	m.clampOffset()
 }
 
 func visualLineWidth(line string, tabWidth int) int {
