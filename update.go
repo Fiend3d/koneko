@@ -46,18 +46,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.clampOffset()
 				return m, m.triggerHighlight()
 			}
+			return m, nil
 		case "down", "j":
 			if m.yOffset < m.totalLines-m.contentHeight() {
 				m.yOffset++
 				m.clampOffset()
 				return m, m.triggerHighlight()
 			}
+			return m, nil
 		case "left":
 			if m.xOffset > 0 {
 				m.xOffset--
 			}
+			return m, nil
 		case "right":
 			m.xOffset++
+			return m, nil
 		case "pgup":
 			step := m.contentHeight() / 2
 			m.yOffset -= step
@@ -96,6 +100,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selection.Active {
 				return m, m.copySelection()
 			}
+			return m, nil
 		case "x", "X":
 			if m.selection.Active || m.selection.Selecting {
 				sr, _, er, _ := m.selection.Bounds()
@@ -108,6 +113,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			return m, nil
 		case "l":
 			m.showLineNum = !m.showLineNum
 			return m, nil
@@ -122,6 +128,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "H":
 			m.xOffset = 0
+			return m, nil
 		}
 
 	case tea.MouseClickMsg:
