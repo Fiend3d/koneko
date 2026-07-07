@@ -147,7 +147,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			contentWidth--
 		}
 		if row >= m.contentHeight() {
-			break
+			return m, nil
 		}
 		if col < 0 {
 			if mouse.Button == tea.MouseLeft {
@@ -169,10 +169,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lastClickCol = 0
 				m.lastClickTime = time.Now()
 			}
-			break
+			return m, nil
 		}
 		if col >= contentWidth {
-			break
+			return m, nil
 		}
 		contentRow := m.yOffset + row
 		contentCol := col + m.xOffset
@@ -196,7 +196,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.selection.Selecting = false
 			m.selection.Active = true
-			break
+			return m, nil
 		}
 
 		if mouse.Button == tea.MouseLeft {
