@@ -92,6 +92,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "d":
 			m.selection.Clear()
 			return m, nil
+		case "y":
+			if m.selection.Active {
+				return m, m.copySelection()
+			}
 		case "x", "X":
 			if m.selection.Active || m.selection.Selecting {
 				sr, _, er, _ := m.selection.Bounds()
