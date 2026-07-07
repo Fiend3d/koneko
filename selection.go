@@ -76,10 +76,7 @@ func extractText(lines []string, sr, sc, er, ec int) string {
 		if sr < len(lines) {
 			line := lines[sr]
 			if sc < len(line) {
-				end := ec
-				if end > len(line) {
-					end = len(line)
-				}
+				end := min(ec, len(line))
 				if sc > end {
 					sc, end = end, sc
 				}
@@ -98,13 +95,7 @@ func extractText(lines []string, sr, sc, er, ec int) string {
 					b.WriteString(line[sc:])
 				}
 			case er:
-				end := ec
-				if end > len(line) {
-					end = len(line)
-				}
-				if end < 0 {
-					end = 0
-				}
+				end := max(min(ec, len(line)), 0)
 				if end > 0 {
 					b.WriteString(line[:end])
 				}
