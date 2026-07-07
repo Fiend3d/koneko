@@ -92,11 +92,12 @@ func extractText(lines []string, sr, sc, er, ec int) string {
 				break
 			}
 			line := lines[i]
-			if i == sr {
+			switch i {
+			case sr:
 				if sc < len(line) {
 					b.WriteString(line[sc:])
 				}
-			} else if i == er {
+			case er:
 				end := ec
 				if end > len(line) {
 					end = len(line)
@@ -107,7 +108,7 @@ func extractText(lines []string, sr, sc, er, ec int) string {
 				if end > 0 {
 					b.WriteString(line[:end])
 				}
-			} else {
+			default:
 				b.WriteString(line)
 			}
 			if i < er {
