@@ -280,23 +280,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if mouse.Button == tea.MouseRight {
 			if !m.selection.Active && !m.selection.Selecting {
-				m.selection.StartRow = contentRow
-				m.selection.StartCol = contentCol
-				m.selection.EndRow = contentRow
-				m.selection.EndCol = contentCol
+				m.selection.Begin(contentRow, contentCol)
 			} else {
-				sr, sc, er, ec := m.selection.Bounds()
-				nearStart := (contentRow-sr)*(contentRow-sr)+(contentCol-sc)*(contentCol-sc) <= (contentRow-er)*(contentRow-er)+(contentCol-ec)*(contentCol-ec)
-				if nearStart {
-					m.selection.StartRow = contentRow
-					m.selection.StartCol = contentCol
-				} else {
-					m.selection.EndRow = contentRow
-					m.selection.EndCol = contentCol
-				}
+				m.selection.Extend(contentRow, contentCol)
 			}
-			m.selection.Selecting = false
-			m.selection.Active = true
+			m.selection.End()
 			return m, nil
 		}
 
