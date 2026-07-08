@@ -35,6 +35,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.triggerHighlight()
 
 	case tea.KeyPressMsg:
+		if m.searchMode {
+			switch msg.String() {
+			case "enter":
+				m.searchStr = m.searchInput.Value()
+				m.searchInput.Blur()
+				m.searchMode = false
+				if m.searchStr != "" && m.fileBuf != nil {
+					row, col, found := m.findNext(m.yOffset, 0)
+					if !found {
+						row, col, found = m.findNext(0, 0)
+					}
+					if found {
+						m.selection.Clear()
+						m.selection.Begin(row, col)
+						m.selection.Extend(row, col+len(m.searchStr))
+						m.selection.End()
+						m.scrollToShowMatch(row)
+						return m, m.triggerHighlight()
+					}
+				}
+				return m, nil
+			case "esc":
+				m.searchInput.Blur()
+				m.searchInput.Reset()
+				m.searchMode = false
+				return m, nil
+			default:
+				var cmd tea.Cmd
+				m.searchInput, cmd = m.searchInput.Update(msg)
+				return m, cmd
+			}
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			if m.fileBuf != nil {
@@ -130,6 +163,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "H":
 			m.xOffset = 0
 			return m, nil
+		case "/":
+			m.searchMode = true
+			m.searchInput.SetValue(m.searchStr)
+			m.searchInput.SetWidth(m.width - 2)
+			cmd := m.searchInput.Focus()
+			return m, cmd
 		case "n":
 			if m.searchStr == "" || m.fileBuf == nil {
 				return m, nil
@@ -337,6 +376,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.hlCoversVisible() {
 			return m, m.debouncedHighlight()
 		}
+	}
+
+	if m.searchMode {
+		var cmd tea.Cmd
+		m.searchInput, cmd = m.searchInput.Update(msg)
+		return m, cmd
 	}
 
 	return m, nil

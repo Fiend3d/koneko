@@ -97,7 +97,12 @@ func (m Model) View() tea.View {
 	}
 
 	b.WriteByte('\n')
-	b.WriteString(renderStatusBar(m.width, m.filePath, m.yOffset, m.contentHeight(), m.totalLines, m.xOffset, m.selection))
+	if m.searchMode {
+		m.searchInput.SetWidth(m.width)
+		b.WriteString(m.searchInput.View())
+	} else {
+		b.WriteString(renderStatusBar(m.width, m.filePath, m.yOffset, m.contentHeight(), m.totalLines, m.xOffset, m.selection))
+	}
 
 	v.SetContent(b.String())
 	return v

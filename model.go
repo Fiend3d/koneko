@@ -3,7 +3,10 @@ package main
 import (
 	"time"
 
+	"koneko/widgets/textinput"
+
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 const contextLines = 100
@@ -29,6 +32,8 @@ type Model struct {
 	highlight      bool
 	tabWidth       int
 	searchStr      string
+	searchMode     bool
+	searchInput    textinput.Model
 	lastClickRow   int
 	lastClickCol   int
 	lastClickTime  time.Time
@@ -36,6 +41,15 @@ type Model struct {
 }
 
 func initialModel(filePath string, tabWidth int, showLineNum bool, showScrollbar bool, highlight bool, searchStr string) Model {
+	si := textinput.New()
+	si.Prompt = " search: "
+	si.Placeholder = ""
+	styles := si.Styles()
+	styles.Focused.Text = lipgloss.NewStyle().Background(lipgloss.BrightBlack).Foreground(lipgloss.White)
+	styles.Focused.Prompt = lipgloss.NewStyle().Background(lipgloss.BrightBlack).Foreground(lipgloss.White)
+	styles.Cursor.Color = lipgloss.White
+	styles.Cursor.Blink = true
+	si.SetStyles(styles)
 	return Model{
 		filePath:      filePath,
 		showLineNum:   showLineNum,
@@ -43,6 +57,7 @@ func initialModel(filePath string, tabWidth int, showLineNum bool, showScrollbar
 		highlight:     highlight,
 		tabWidth:      tabWidth,
 		searchStr:     searchStr,
+		searchInput:   si,
 	}
 }
 
