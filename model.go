@@ -34,13 +34,18 @@ type Model struct {
 	searchStr      string
 	searchMode     bool
 	searchInput    textinput.Model
+	hasInitSelect  bool
+	initSelSR      int
+	initSelSC      int
+	initSelER      int
+	initSelEC      int
 	lastClickRow   int
 	lastClickCol   int
 	lastClickTime  time.Time
 	lastWheelTime  time.Time
 }
 
-func initialModel(filePath string, tabWidth int, showLineNum bool, showScrollbar bool, highlight bool, searchStr string) Model {
+func initialModel(filePath string, tabWidth int, showLineNum bool, showScrollbar bool, highlight bool, searchStr string, hasInitSelect bool, initSelSR, initSelSC, initSelER, initSelEC int) Model {
 	si := textinput.New()
 	si.Prompt = " search: "
 	si.Placeholder = ""
@@ -58,6 +63,11 @@ func initialModel(filePath string, tabWidth int, showLineNum bool, showScrollbar
 		tabWidth:      tabWidth,
 		searchStr:     searchStr,
 		searchInput:   si,
+		hasInitSelect: hasInitSelect,
+		initSelSR:     initSelSR,
+		initSelSC:     initSelSC,
+		initSelER:     initSelER,
+		initSelEC:     initSelEC,
 	}
 }
 

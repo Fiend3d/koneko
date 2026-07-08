@@ -17,6 +17,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.highlighter = NewHighlighter(m.filePath, m.totalLines)
 		m.ready = true
 		m.highlightRange = [2]int{-1, -1}
+
+		if m.hasInitSelect {
+			m.selection.Begin(m.initSelSR, m.initSelSC)
+			m.selection.Extend(m.initSelER, m.initSelEC)
+			m.selection.End()
+			m.scrollToShowMatch(m.initSelSR)
+			allLines, err := m.fileBuf.Lines(0, m.totalLines)
+			if err == nil {
+				sr, sc, er, ec := m.selection.Bounds()
+				if sr < len(allLines) {
+					sc = visualToRawCol(allLines[sr], sc, m.tabWidth)
+				}
+				if er < len(allLines) {
+					ec = visualToRawCol(allLines[er], ec, m.tabWidth)
+				}
+				m.searchStr = extractText(allLines, sr, sc, er, ec)
+			}
+		}
+
 		return m, m.triggerHighlight()
 
 	case errMsg:
