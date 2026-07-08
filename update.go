@@ -91,6 +91,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.searchInput.Blur()
 				m.searchInput.Reset()
 				m.searchMode = false
+				m.matchLines = nil
+				m.matchIdx = 0
 				return m, nil
 			default:
 				var cmd tea.Cmd
@@ -151,12 +153,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if err == nil {
 				lastCol = visualLineWidth(lastLine, m.tabWidth)
 			}
-			m.selection.StartRow = 0
-			m.selection.StartCol = 0
-			m.selection.EndRow = m.totalLines - 1
-			m.selection.EndCol = lastCol
-			m.selection.Active = true
-			m.selection.Selecting = false
+			m.selection.Begin(0, 0)
+			m.selection.Extend(m.totalLines-1, lastCol)
+			m.selection.End()
 			return m, nil
 		case "d":
 			m.selection.Clear()
@@ -169,13 +168,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "x", "X":
 			if m.selection.Active || m.selection.Selecting {
 				sr, _, er, _ := m.selection.Bounds()
-				m.selection.StartRow = sr
-				m.selection.StartCol = 0
-				m.selection.EndRow = er
+				m.selection.Begin(sr, 0)
 				line, err := m.fileBuf.Line(er)
 				if err == nil {
-					m.selection.EndCol = visualLineWidth(line, m.tabWidth)
+					m.selection.Extend(er, visualLineWidth(line, m.tabWidth))
 				}
+				m.selection.End()
 				return m, nil
 			}
 			return m, nil
@@ -258,8 +256,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if err == nil {
 					width = visualLineWidth(line, m.tabWidth)
 				}
-				m.selection.StartRow = contentRow
-				m.selection.StartCol = 0
+				m.selection.Begin(contentRow, 0)
 				m.selection.EndRow = contentRow
 				m.selection.EndCol = width
 				m.selection.Selecting = true
