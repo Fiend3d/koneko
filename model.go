@@ -34,6 +34,8 @@ type Model struct {
 	searchStr      string
 	searchMode     bool
 	searchInput    textinput.Model
+	matchLines     [][2]int
+	matchIdx       int
 	hasInitSelect  bool
 	initSelSR      int
 	initSelSC      int

@@ -101,7 +101,7 @@ func (m Model) View() tea.View {
 		m.searchInput.SetWidth(m.width)
 		b.WriteString(m.searchInput.View())
 	} else {
-		b.WriteString(renderStatusBar(m.width, m.filePath, m.yOffset, m.contentHeight(), m.totalLines, m.xOffset, m.selection))
+		b.WriteString(renderStatusBar(m.width, m.filePath, m.yOffset, m.contentHeight(), m.totalLines, m.xOffset, m.selection, m.searchStr, m.matchIdx, len(m.matchLines)))
 	}
 
 	v.SetContent(b.String())
@@ -238,7 +238,7 @@ func ansiStateAt(s string, visualPos int) string {
 	return active.String()
 }
 
-func renderStatusBar(w int, filePath string, yOffset, contentH, totalLines int, xOffset int, sel Selection) string {
+func renderStatusBar(w int, filePath string, yOffset, contentH, totalLines int, xOffset int, sel Selection, searchStr string, matchIdx, matchTotal int) string {
 	name := filepath.Base(filePath)
 	lineInfo := fmt.Sprintf("%d/%d", yOffset+contentH, totalLines)
 	if xOffset > 0 {
@@ -251,7 +251,12 @@ func renderStatusBar(w int, filePath string, yOffset, contentH, totalLines int, 
 		selInfo = fmt.Sprintf("  sel %d:%d-%d:%d", sr+1, sc+1, er+1, ec+1)
 	}
 
-	leftText := name + selInfo
+	searchInfo := ""
+	if searchStr != "" && matchTotal > 0 {
+		searchInfo = fmt.Sprintf("  %s %d/%d", searchStr, matchIdx+1, matchTotal)
+	}
+
+	leftText := name + selInfo + searchInfo
 	rightText := lineInfo
 	leftText = truncateString(leftText, (w-2)/2)
 	rightText = truncateString(rightText, (w-2)/2)

@@ -34,6 +34,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.searchStr = extractText(allLines, sr, sc, er, ec)
 			}
+			if m.searchStr != "" {
+				m.populateMatchLines()
+			}
 		}
 
 		return m, m.triggerHighlight()
@@ -60,12 +63,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.searchStr = m.searchInput.Value()
 				m.searchInput.Blur()
 				m.searchMode = false
+				m.matchLines = nil
+				m.matchIdx = 0
 				if m.searchStr != "" && m.fileBuf != nil {
-					row, col, found := m.findNext(m.yOffset, 0)
-					if !found {
-						row, col, found = m.findNext(0, 0)
-					}
-					if found {
+					m.populateMatchLines()
+					if len(m.matchLines) > 0 {
+						m.matchIdx = 0
+						if m.yOffset > 0 {
+							for i, ml := range m.matchLines {
+								if ml[0] >= m.yOffset {
+									m.matchIdx = i
+									break
+								}
+							}
+						}
+						row, col := m.matchLines[m.matchIdx][0], m.matchLines[m.matchIdx][1]
 						m.selection.Clear()
 						m.selection.Begin(row, col)
 						m.selection.Extend(row, col+len(m.searchStr))
@@ -189,53 +201,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.searchInput.Focus()
 			return m, cmd
 		case "n":
-			if m.searchStr == "" || m.fileBuf == nil {
+			if len(m.matchLines) == 0 {
 				return m, nil
 			}
-			er, ec := m.yOffset, -1
-			if m.selection.Active {
-				_, _, er, ec = m.selection.Bounds()
+			m.matchIdx++
+			if m.matchIdx >= len(m.matchLines) {
+				m.matchIdx = 0
 			}
-			row, col, found := m.findNext(er, ec+1)
-			if !found && m.selection.Active {
-				row, col, found = m.findNext(0, 0)
-			}
-			if found {
-				m.selection.Clear()
-				m.selection.Begin(row, col)
-				m.selection.Extend(row, col+len(m.searchStr))
-				m.selection.End()
-				m.scrollToShowMatch(row)
-				return m, m.triggerHighlight()
-			}
-			return m, nil
+			row, col := m.matchLines[m.matchIdx][0], m.matchLines[m.matchIdx][1]
+			m.selection.Clear()
+			m.selection.Begin(row, col)
+			m.selection.Extend(row, col+len(m.searchStr))
+			m.selection.End()
+			m.scrollToShowMatch(row)
+			return m, m.triggerHighlight()
 		case "N":
-			if m.searchStr == "" || m.fileBuf == nil {
+			if len(m.matchLines) == 0 {
 				return m, nil
 			}
-			sr, sc := m.yOffset, 0
-			if m.selection.Active {
-				sr, sc, _, _ = m.selection.Bounds()
-				sc--
+			m.matchIdx--
+			if m.matchIdx < 0 {
+				m.matchIdx = len(m.matchLines) - 1
 			}
-			row, col, found := m.findPrev(sr, sc)
-			if !found && m.selection.Active {
-				sr = m.totalLines - 1
-				lastLine, err := m.fileBuf.Line(sr)
-				if err == nil {
-					sc = visualLineWidth(lastLine, m.tabWidth)
-				}
-				row, col, found = m.findPrev(sr, sc)
-			}
-			if found {
-				m.selection.Clear()
-				m.selection.Begin(row, col)
-				m.selection.Extend(row, col+len(m.searchStr))
-				m.selection.End()
-				m.scrollToShowMatch(row)
-				return m, m.triggerHighlight()
-			}
-			return m, nil
+			row, col := m.matchLines[m.matchIdx][0], m.matchLines[m.matchIdx][1]
+			m.selection.Clear()
+			m.selection.Begin(row, col)
+			m.selection.Extend(row, col+len(m.searchStr))
+			m.selection.End()
+			m.scrollToShowMatch(row)
+			return m, m.triggerHighlight()
 		}
 
 	case tea.MouseClickMsg:
@@ -619,6 +613,32 @@ func (m *Model) scrollToShowMatch(row int) {
 	}
 	m.yOffset = targetY
 	m.clampOffset()
+}
+
+func (m *Model) populateMatchLines() {
+	m.matchLines = nil
+	if m.searchStr == "" {
+		return
+	}
+	allLines, err := m.fileBuf.Lines(0, m.totalLines)
+	if err != nil {
+		return
+	}
+	searchLower := strings.ToLower(m.searchStr)
+	for row, line := range allLines {
+		expanded := expandTabs(line, m.tabWidth)
+		lineLower := strings.ToLower(expanded)
+		start := 0
+		for {
+			idx := strings.Index(lineLower[start:], searchLower)
+			if idx == -1 {
+				break
+			}
+			col := start + idx
+			m.matchLines = append(m.matchLines, [2]int{row, col})
+			start = col + len(searchLower)
+		}
+	}
 }
 
 func visualLineWidth(line string, tabWidth int) int {
