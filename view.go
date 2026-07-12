@@ -48,6 +48,7 @@ func (m Model) View() tea.View {
 
 	for row := 0; row < contentH; row++ {
 		var lineContent string
+		lineWidth := 0
 
 		if row > 0 {
 			b.WriteByte('\n')
@@ -62,6 +63,7 @@ func (m Model) View() tea.View {
 				styled = strings.ReplaceAll(lines[row], "\r", "")
 			}
 			styled = expandTabs(styled, m.tabWidth)
+			lineWidth = ansi.StringWidth(styled)
 
 			inSelection := false
 			if m.selection.Active || m.selection.Selecting {
@@ -87,8 +89,8 @@ func (m Model) View() tea.View {
 			b.WriteString(strings.Repeat(" ", gutter))
 		}
 		if m.showScrollbar {
-			lineVis := ansi.StringWidth(ansi.Strip(lineContent))
-			if pad := w - lineVis; pad > 0 {
+			visWidth := max(0, min(w, lineWidth-m.xOffset))
+			if pad := w - visWidth; pad > 0 {
 				b.WriteString(strings.Repeat(" ", pad))
 			}
 			b.WriteString(scrollbarCharAt(row, contentH, m.yOffset, m.totalLines))
