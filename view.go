@@ -127,7 +127,7 @@ func applyLineSelection(styled string, lineNum, sr, sc, er, ec int) string {
 		after := styled[endByte:]
 		styledSelected := styleSelection.Render(ansi.Strip(styled[startByte:endByte]))
 		fgRestore := ansiStateAt(styled, ec)
-		return before + styledSelected + fgRestore + after
+		return before + "\033[0m" + styledSelected + "\033[0m" + fgRestore + after
 	}
 
 	if lineNum == er {
@@ -144,7 +144,7 @@ func applyLineSelection(styled string, lineNum, sr, sc, er, ec int) string {
 		after := styled[endByte:]
 		styledSelected := styleSelection.Render(ansi.Strip(styled[:endByte]))
 		fgRestore := ansiStateAt(styled, ec)
-		return styledSelected + fgRestore + after
+		return "\033[0m" + styledSelected + "\033[0m" + fgRestore + after
 	}
 
 	if lineNum == sr {
@@ -154,10 +154,10 @@ func applyLineSelection(styled string, lineNum, sr, sc, er, ec int) string {
 		startByte := visualToByte(styled, sc)
 		before := styled[:startByte]
 		styledSelected := styleSelection.Render(ansi.Strip(styled[startByte:]))
-		return before + styledSelected
+		return before + "\033[0m" + styledSelected + "\033[0m"
 	}
 
-	return styleSelection.Render(ansi.Strip(styled))
+	return "\033[0m" + styleSelection.Render(ansi.Strip(styled)) + "\033[0m"
 }
 
 func expandTabs(s string, tabWidth int) string {
