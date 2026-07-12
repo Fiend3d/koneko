@@ -249,8 +249,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if col < 0 {
+			contentRow := m.yOffset + row
 			if mouse.Button == tea.MouseLeft {
-				contentRow := m.yOffset + row
 				line, err := m.fileBuf.Line(contentRow)
 				width := 0
 				if err == nil {
@@ -266,6 +266,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lastClickRow = contentRow
 				m.lastClickCol = 0
 				m.lastClickTime = time.Now()
+			}
+			if mouse.Button == tea.MouseRight {
+				line, err := m.fileBuf.Line(contentRow)
+				width := 0
+				if err == nil {
+					width = visualLineWidth(line, m.tabWidth)
+				}
+				if m.selection.Active || m.selection.Selecting {
+				sr, _, er, _ := m.selection.Bounds()
+					if contentRow < sr {
+						m.selection.StartRow = contentRow
+						m.selection.StartCol = 0
+					} else if contentRow > er {
+						m.selection.EndRow = contentRow
+						m.selection.EndCol = width
+					} else {
+						m.selection.EndRow = contentRow
+						m.selection.EndCol = width
+					}
+				} else {
+					m.selection.Begin(contentRow, 0)
+					m.selection.EndRow = contentRow
+					m.selection.EndCol = width
+				}
+				m.selection.Selecting = false
+				m.selection.Active = true
+				return m, nil
 			}
 			return m, nil
 		}
