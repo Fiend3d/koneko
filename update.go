@@ -14,7 +14,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fileLoadedMsg:
 		m.fileBuf = msg.fb
 		m.totalLines = m.fileBuf.LineCount()
-		m.highlighter = NewHighlighter(m.filePath, m.totalLines)
+		m.highlighter = NewHighlighter(m.filePath, m.totalLines, theme.TokenStyles)
 		m.ready = true
 		m.highlightRange = [2]int{-1, -1}
 

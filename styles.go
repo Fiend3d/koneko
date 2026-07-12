@@ -6,18 +6,24 @@ import (
 
 var (
 	styleStatusBar = lipgloss.NewStyle().
-			Background(lipgloss.BrightBlack).
-			Foreground(lipgloss.White)
+			Background(theme.Background).
+			Foreground(theme.Foreground)
 
 	styleSelection = lipgloss.NewStyle().
-			Background(lipgloss.White).
-			Foreground(lipgloss.Black)
+			Background(theme.SelectionBg).
+			Foreground(theme.SelectionFg)
 
-	styleLineNum = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
+	styleLineNum = lipgloss.NewStyle().
+			Background(theme.Background).
+			Foreground(theme.DimText)
 
-	styleLineNumSel = lipgloss.NewStyle().Foreground(lipgloss.White)
+	styleLineNumSel = lipgloss.NewStyle().
+			Background(theme.Background).
+			Foreground(theme.Foreground)
 
 	styleScrollbar = lipgloss.NewStyle().
-			Background(lipgloss.BrightBlack).
-			Foreground(lipgloss.White)
+			Background(theme.Background).
+			Foreground(theme.Foreground)
+
+	styleBackground = lipgloss.NewStyle().Background(theme.Background)
 )

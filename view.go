@@ -84,18 +84,25 @@ func (m Model) View() tea.View {
 			}
 
 			lineContent = ansi.Cut(styled, m.xOffset, m.xOffset+w)
+			if lineContent != "" && lineContent[0] != '\x1b' {
+				lineContent = styleBackground.Render(lineContent)
+			}
 			b.WriteString(lineContent)
 		} else if m.showLineNum {
-			b.WriteString(strings.Repeat(" ", gutter))
+			b.WriteString(styleBackground.Render(strings.Repeat(" ", gutter)))
 		}
 		if m.showScrollbar {
 			visWidth := max(0, min(w, lineWidth-m.xOffset))
 			if pad := w - visWidth; pad > 0 {
-				b.WriteString(strings.Repeat(" ", pad))
+				b.WriteString(styleBackground.Render(strings.Repeat(" ", pad)))
 			}
 			b.WriteString(scrollbarCharAt(row, contentH, m.yOffset, m.totalLines))
+		} else {
+			visWidth := max(0, min(w, lineWidth-m.xOffset))
+			if pad := w - visWidth; pad > 0 {
+				b.WriteString(styleBackground.Render(strings.Repeat(" ", pad)))
+			}
 		}
-		b.WriteString("\033[0m")
 	}
 
 	b.WriteByte('\n')
@@ -129,7 +136,7 @@ func applyLineSelection(styled string, lineNum, sr, sc, er, ec int) string {
 		after := styled[endByte:]
 		styledSelected := styleSelection.Render(ansi.Strip(styled[startByte:endByte]))
 		fgRestore := ansiStateAt(styled, ec)
-		return before + "\033[0m" + styledSelected + "\033[0m" + fgRestore + after
+		return before + styledSelected + fgRestore + after
 	}
 
 	if lineNum == er {
@@ -146,7 +153,7 @@ func applyLineSelection(styled string, lineNum, sr, sc, er, ec int) string {
 		after := styled[endByte:]
 		styledSelected := styleSelection.Render(ansi.Strip(styled[:endByte]))
 		fgRestore := ansiStateAt(styled, ec)
-		return "\033[0m" + styledSelected + "\033[0m" + fgRestore + after
+		return styledSelected + fgRestore + after
 	}
 
 	if lineNum == sr {
@@ -156,10 +163,10 @@ func applyLineSelection(styled string, lineNum, sr, sc, er, ec int) string {
 		startByte := visualToByte(styled, sc)
 		before := styled[:startByte]
 		styledSelected := styleSelection.Render(ansi.Strip(styled[startByte:]))
-		return before + "\033[0m" + styledSelected + "\033[0m"
+		return before + styledSelected
 	}
 
-	return "\033[0m" + styleSelection.Render(ansi.Strip(styled)) + "\033[0m"
+	return styleSelection.Render(ansi.Strip(styled))
 }
 
 func expandTabs(s string, tabWidth int) string {

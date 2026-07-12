@@ -52,9 +52,9 @@ func initialModel(filePath string, tabWidth int, showLineNum bool, showScrollbar
 	si.Prompt = " search: "
 	si.Placeholder = ""
 	styles := si.Styles()
-	styles.Focused.Text = lipgloss.NewStyle().Background(lipgloss.BrightBlack).Foreground(lipgloss.White)
-	styles.Focused.Prompt = lipgloss.NewStyle().Background(lipgloss.BrightBlack).Foreground(lipgloss.White)
-	styles.Cursor.Color = lipgloss.White
+	styles.Focused.Text = lipgloss.NewStyle().Background(theme.Background).Foreground(theme.Foreground)
+	styles.Focused.Prompt = lipgloss.NewStyle().Background(theme.Background).Foreground(theme.Foreground)
+	styles.Cursor.Color = theme.Foreground
 	styles.Cursor.Blink = true
 	si.SetStyles(styles)
 	return Model{

@@ -1,36 +1,29 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/alecthomas/chroma/v2/styles"
 )
 
 type Highlighter struct {
-	lexer chroma.Lexer
-	style *chroma.Style
-	cache []string
+	lexer       chroma.Lexer
+	tokenStyles TokenStyles
+	cache       []string
 }
 
-func NewHighlighter(filename string, totalLines int) *Highlighter {
+func NewHighlighter(filename string, totalLines int, tokenStyles TokenStyles) *Highlighter {
 	l := lexers.Match(filename)
 	if l == nil {
 		l = lexers.Fallback
 	}
 	l = chroma.Coalesce(l)
 
-	s := styles.Get("catppuccin-mocha")
-	if s == nil {
-		s = styles.Fallback
-	}
-
 	return &Highlighter{
-		lexer: l,
-		style: s,
-		cache: make([]string, totalLines),
+		lexer:       l,
+		tokenStyles: tokenStyles,
+		cache:       make([]string, totalLines),
 	}
 }
 
@@ -91,37 +84,10 @@ func (h *Highlighter) styleLine(tokens []chroma.Token) string {
 		if value == "" {
 			continue
 		}
-		entry := h.style.Get(t.Type)
-		if entry.IsZero() {
-			b.WriteString(value)
-			continue
-		}
-		open := ansiEscape(entry)
-		b.WriteString(open)
-		b.WriteString(value)
+		s := styleForToken(h.tokenStyles, t.Type)
+		b.WriteString(s.Inline(true).Render(value))
 	}
 	return b.String()
-}
-
-func ansiEscape(entry chroma.StyleEntry) string {
-	var parts []string
-	if entry.Bold == chroma.Yes {
-		parts = append(parts, "1")
-	}
-	if entry.Italic == chroma.Yes {
-		parts = append(parts, "3")
-	}
-	if entry.Underline == chroma.Yes {
-		parts = append(parts, "4")
-	}
-	if entry.Colour.IsSet() {
-		parts = append(parts, fmt.Sprintf("38;2;%d;%d;%d",
-			entry.Colour.Red(), entry.Colour.Green(), entry.Colour.Blue()))
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return "\033[" + strings.Join(parts, ";") + "m"
 }
 
 func (h *Highlighter) StyledLine(n int) string {
