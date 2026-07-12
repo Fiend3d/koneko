@@ -25,13 +25,18 @@ func OpenFileBuffer(path string) (*FileBuffer, error) {
 	size := info.Size()
 
 	var offsets []int64
-	scanner := bufio.NewScanner(f)
-	scanner.Split(bufio.ScanLines)
 	offsets = append(offsets, 0)
+	reader := bufio.NewReader(f)
 	var pos int64
-	for scanner.Scan() {
-		pos += int64(len(scanner.Bytes())) + 1
-		offsets = append(offsets, pos)
+	for {
+		line, err := reader.ReadString('\n')
+		if len(line) > 0 {
+			pos += int64(len(line))
+			offsets = append(offsets, pos)
+		}
+		if err != nil {
+			break
+		}
 	}
 
 	return &FileBuffer{f: f, offsets: offsets, size: size}, nil

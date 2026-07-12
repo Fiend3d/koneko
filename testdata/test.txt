@@ -1,0 +1,21 @@
+This is a test file for koneko.
+
+It contains some text that can be used for testing search functionality.
+For example, you can search for the word "search" or "test".
+
+Here are some more lines:
+
+- Line with the word apple
+- Line with the word banana
+- Line with the word cherry
+- This line mentions search again
+- And another test line here
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.
+
+Some repeated words for testing:
+test test test
+search search search
+find find find
