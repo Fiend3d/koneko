@@ -273,12 +273,22 @@ func renderStatusBar(w int, filePath string, yOffset, contentH, totalLines int, 
 
 	leftText := name + selInfo + searchInfo
 	rightText := lineInfo
-	leftText = truncateString(leftText, (w-2)/2)
-	rightText = truncateString(rightText, (w-2)/2)
+
 	mid := w - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
 	if mid < 0 {
-		leftText = truncateString(leftText, max(0, w-2-ansi.StringWidth(rightText)-3)) + "..."
-		mid = w - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
+		if selInfo != "" {
+			leftText = name + searchInfo
+			mid = w - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
+		}
+		if mid < 0 {
+			avail := max(0, w-2-ansi.StringWidth(searchInfo)-ansi.StringWidth(rightText))
+			if avail > 3 {
+				leftText = truncateString(name, max(0, avail-3)) + "..." + searchInfo
+			} else {
+				leftText = searchInfo
+			}
+			mid = w - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
+		}
 		if mid < 0 {
 			rightText = truncateString(rightText, max(0, w-2-ansi.StringWidth(leftText)-3)) + "..."
 			mid = w - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
