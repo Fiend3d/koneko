@@ -250,6 +250,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if col < 0 {
 			contentRow := m.yOffset + row
+			if contentRow >= m.totalLines {
+				return m, nil
+			}
 			if mouse.Button == tea.MouseLeft {
 				line, err := m.fileBuf.Line(contentRow)
 				width := 0
@@ -300,6 +303,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		contentRow := m.yOffset + row
+		if contentRow >= m.totalLines {
+			return m, nil
+		}
 		contentCol := col + m.xOffset
 
 		if mouse.Button == tea.MouseRight {
@@ -353,7 +359,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				row = 0
 			}
 			contentRow := m.yOffset + row
-			contentCol := col + m.xOffset
+			if m.totalLines > 0 {
+				contentRow = min(contentRow, m.totalLines-1)
+			}
 
 			if m.gutterSelect {
 				if contentRow < m.gutterAnchor {
@@ -377,6 +385,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if col < 0 {
 				col = 0
 			}
+			contentCol := col + m.xOffset
 			m.selection.Extend(contentRow, contentCol)
 		}
 
