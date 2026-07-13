@@ -5,15 +5,22 @@ import (
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/charmbracelet/x/ansi"
 )
+
+type cachedLine struct {
+	styled string
+	width  int
+}
 
 type Highlighter struct {
 	lexer       chroma.Lexer
 	tokenStyles TokenStyles
-	cache       []string
+	cache       []cachedLine
+	tabWidth    int
 }
 
-func NewHighlighter(filename string, totalLines int, tokenStyles TokenStyles) *Highlighter {
+func NewHighlighter(filename string, totalLines int, tokenStyles TokenStyles, tabWidth int) *Highlighter {
 	l := lexers.Match(filename)
 	if l == nil {
 		l = lexers.Fallback
@@ -23,7 +30,8 @@ func NewHighlighter(filename string, totalLines int, tokenStyles TokenStyles) *H
 	return &Highlighter{
 		lexer:       l,
 		tokenStyles: tokenStyles,
-		cache:       make([]string, totalLines),
+		cache:       make([]cachedLine, totalLines),
+		tabWidth:    tabWidth,
 	}
 }
 
@@ -48,7 +56,7 @@ func (h *Highlighter) HighlightRange(text string, fromLine int) {
 		if n >= len(h.cache) {
 			break
 		}
-		if h.cache[n] == "" {
+		if h.cache[n].styled == "" {
 			allCached = false
 			break
 		}
@@ -70,11 +78,24 @@ func (h *Highlighter) HighlightRange(text string, fromLine int) {
 		if lineNum >= len(h.cache) {
 			break
 		}
-		if h.cache[lineNum] != "" {
+		if h.cache[lineNum].styled != "" {
 			continue
 		}
-		h.cache[lineNum] = strings.ReplaceAll(h.styleLine(lt), "\n", "")
+		styled := strings.ReplaceAll(h.styleLine(lt), "\n", "")
+		expanded := expandTabs(styled, h.tabWidth)
+		h.cache[lineNum] = cachedLine{
+			styled: expanded,
+			width:  ansi.StringWidth(expanded),
+		}
 	}
+}
+
+func (h *Highlighter) StyledLine(n int) (string, int, bool) {
+	if n >= 0 && n < len(h.cache) {
+		cl := h.cache[n]
+		return cl.styled, cl.width, cl.styled != ""
+	}
+	return "", 0, false
 }
 
 func (h *Highlighter) styleLine(tokens []chroma.Token) string {
@@ -88,11 +109,4 @@ func (h *Highlighter) styleLine(tokens []chroma.Token) string {
 		b.WriteString(s.Inline(true).Render(value))
 	}
 	return b.String()
-}
-
-func (h *Highlighter) StyledLine(n int) string {
-	if n >= 0 && n < len(h.cache) {
-		return h.cache[n]
-	}
-	return ""
 }

@@ -56,14 +56,20 @@ func (m Model) View() tea.View {
 		if row < len(lines) {
 			lineNum := from + row
 			var styled string
+			lineWidth = 0
+			cached := false
 			if m.highlight {
-				styled = m.highlighter.StyledLine(lineNum)
+				var w int
+				styled, w, cached = m.highlighter.StyledLine(lineNum)
+				if cached {
+					lineWidth = w
+				}
 			}
-			if styled == "" {
+			if !cached {
 				styled = strings.ReplaceAll(lines[row], "\r", "")
+				styled = expandTabs(styled, m.tabWidth)
+				lineWidth = ansi.StringWidth(styled)
 			}
-			styled = expandTabs(styled, m.tabWidth)
-			lineWidth = ansi.StringWidth(styled)
 
 			inSelection := false
 			if m.selection.Active || m.selection.Selecting {
