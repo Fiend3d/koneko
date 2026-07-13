@@ -276,8 +276,8 @@ func base16Theme() Theme {
 		Background:  bg,
 		Foreground:  fg,
 		DimText:     dim,
-		SelectionBg: fg,
-		SelectionFg: bg,
+		SelectionBg: lipgloss.BrightBlue,
+		SelectionFg: lipgloss.NoColor{},
 		TokenStyles: makeTokenStyles(bg, fg, dim, pink, green, orange, yellow, purple, red),
 	}
 }
