@@ -82,6 +82,7 @@ func monokaiTheme() Theme {
 		TokenStyles: TokenStyles{
 			chroma.Text:                   tokenStyle(bg, fg),
 			chroma.Whitespace:             tokenStyle(bg, fg),
+			chroma.Generic:                tokenStyle(bg, fg),
 			chroma.Comment:                tokenStyleItalic(bg, dim),
 			chroma.CommentSpecial:         tokenStyleItalic(bg, dim),
 			chroma.CommentPreproc:         tokenStyle(bg, green),
