@@ -36,8 +36,10 @@ func setTheme(name string) {
 		theme = base16Theme()
 	case "ferra":
 		theme = ferraTheme()
-	default:
+	case "monokai":
 		theme = monokaiTheme()
+	default:
+		theme = draculaTheme()
 	}
 	initStyles()
 }

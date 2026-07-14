@@ -17,7 +17,7 @@ func main() {
 	noHighlight := flag.Bool("no-highlight", false, "disable syntax highlighting")
 	searchStr := flag.String("search", "", "search string")
 	selectRange := flag.String("select", "", "selection range (e.g. 1:7-1:10)")
-	themeName := flag.String("theme", "monokai", "color theme (autumn, base16, dracula, ferra, github, monokai, nord, tokyonight)")
+	themeName := flag.String("theme", "dracula", "color theme (autumn, base16, dracula, ferra, github, monokai, nord, tokyonight)")
 	flag.Parse()
 	setTheme(*themeName)
 
