@@ -45,6 +45,8 @@ type Model struct {
 	lastClickCol   int
 	lastClickTime  time.Time
 	lastWheelTime  time.Time
+	helpMode       bool
+	helpOffset     int
 }
 
 func initialModel(filePath string, tabWidth int, showLineNum bool, showScrollbar bool, highlight bool, searchStr string, hasInitSelect bool, initSelSR, initSelSC, initSelER, initSelEC int) Model {

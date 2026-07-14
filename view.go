@@ -29,6 +29,11 @@ func (m Model) View() tea.View {
 		return v
 	}
 
+	if m.helpMode {
+		v.SetContent(renderHelp(m))
+		return v
+	}
+
 	from, to := m.visibleLineRange()
 	contentH := m.contentHeight()
 	gutter := m.lineNumWidth()

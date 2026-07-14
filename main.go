@@ -10,6 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+const version = "1.0.0"
+
 func main() {
 	tabWidth := flag.Int("tab-width", 4, "tab display width")
 	noLineNumbers := flag.Bool("no-line-numbers", false, "hide line numbers")

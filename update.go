@@ -101,6 +101,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		if m.helpMode {
+			switch msg.String() {
+			case "f1", "esc":
+				m.helpMode = false
+				return m, nil
+			case "up", "k":
+				if m.helpOffset > 0 {
+					m.helpOffset--
+				}
+				return m, nil
+			case "down", "j":
+				maxOff := len(helpLines) - m.contentHeight()
+				if maxOff < 0 {
+					maxOff = 0
+				}
+				if m.helpOffset < maxOff {
+					m.helpOffset++
+				}
+				return m, nil
+			case "pgup":
+				m.helpOffset -= m.contentHeight() / 2
+				if m.helpOffset < 0 {
+					m.helpOffset = 0
+				}
+				return m, nil
+			case "pgdown":
+				m.helpOffset += m.contentHeight() / 2
+				maxOff := len(helpLines) - m.contentHeight()
+				if maxOff < 0 {
+					maxOff = 0
+				}
+				if m.helpOffset > maxOff {
+					m.helpOffset = maxOff
+				}
+				return m, nil
+			case "home", "g":
+				m.helpOffset = 0
+				return m, nil
+			case "end", "G":
+				m.helpOffset = len(helpLines) - m.contentHeight()
+				if m.helpOffset < 0 {
+					m.helpOffset = 0
+				}
+				return m, nil
+			}
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			if m.fileBuf != nil {
@@ -192,6 +239,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "H":
 			m.xOffset = 0
 			return m, nil
+		case "f1":
+			m.helpMode = true
+			m.helpOffset = 0
+			return m, nil
 		case "/":
 			m.searchMode = true
 			m.searchInput.SetValue(m.searchStr)
@@ -231,6 +282,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseClickMsg:
+		if m.helpMode {
+			return m, nil
+		}
 		mouse := msg.Mouse()
 		row := mouse.Y
 
@@ -340,6 +394,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMotionMsg:
+		if m.helpMode {
+			return m, nil
+		}
 		if m.scrollbarDrag {
 			m.scrollToRow(msg.Mouse().Y)
 			return m, m.triggerHighlight()
@@ -390,12 +447,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseReleaseMsg:
+		if m.helpMode {
+			return m, nil
+		}
 		m.scrollbarDrag = false
 		m.gutterSelect = false
 		m.selection.End()
 
 	case tea.MouseWheelMsg:
 		mouse := msg.Mouse()
+		if m.helpMode {
+			switch mouse.Button {
+			case tea.MouseWheelUp:
+				m.helpOffset -= 3
+			case tea.MouseWheelDown:
+				m.helpOffset += 3
+			}
+			if m.helpOffset < 0 {
+				m.helpOffset = 0
+			}
+			maxOff := len(helpLines) - m.contentHeight()
+			if maxOff < 0 {
+				maxOff = 0
+			}
+			if m.helpOffset > maxOff {
+				m.helpOffset = maxOff
+			}
+			return m, nil
+		}
 		switch mouse.Button {
 		case tea.MouseWheelUp:
 			step := 3
