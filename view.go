@@ -13,6 +13,7 @@ const statusBarHeight = 1
 
 func (m Model) View() tea.View {
 	v := tea.NewView("")
+	v.WindowTitle = "Koneko"
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 
