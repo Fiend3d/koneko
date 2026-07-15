@@ -19,13 +19,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.highlightRange = [2]int{-1, -1}
 
 		if m.hasInitSelect {
-			m.selection.Begin(m.initSelSR, m.initSelSC)
-			m.selection.Extend(m.initSelER, m.initSelEC)
-			m.selection.End()
-			m.scrollToShowMatch(m.initSelSR)
 			allLines, err := m.fileBuf.Lines(0, m.totalLines)
 			if err == nil {
-				sr, sc, er, ec := m.selection.Bounds()
+				sr, sc, er, ec := m.initSelSR, m.initSelSC, m.initSelER, m.initSelEC
+				if sr < len(allLines) {
+					sc = rawToVisualCol(allLines[sr], sc, m.tabWidth)
+				}
+				if er < len(allLines) {
+					ec = rawToVisualCol(allLines[er], ec, m.tabWidth)
+				}
+				m.selection.Begin(sr, sc)
+				m.selection.Extend(er, ec)
+				m.selection.End()
+				m.scrollToShowMatch(m.initSelSR)
+				sr, sc, er, ec = m.selection.Bounds()
 				if sr < len(allLines) {
 					sc = visualToRawCol(allLines[sr], sc, m.tabWidth)
 				}
@@ -33,9 +40,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					ec = visualToRawCol(allLines[er], ec, m.tabWidth)
 				}
 				m.searchStr = extractText(allLines, sr, sc, er, ec)
-			}
-			if m.searchStr != "" {
-				m.populateMatchLines()
+				if m.searchStr != "" {
+					m.populateMatchLines()
+				}
 			}
 		}
 
@@ -630,6 +637,21 @@ func (m *Model) copySelection() tea.Cmd {
 		return nil
 	}
 	return tea.SetClipboard(text)
+}
+
+func rawToVisualCol(line string, rawCol int, tabWidth int) int {
+	vis := 0
+	for raw, ch := range line {
+		if raw >= rawCol {
+			return vis
+		}
+		if ch == '\t' {
+			vis += tabWidth - (vis % tabWidth)
+		} else {
+			vis++
+		}
+	}
+	return vis
 }
 
 func visualToRawCol(line string, visualCol int, tabWidth int) int {
