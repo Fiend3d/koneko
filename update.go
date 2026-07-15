@@ -32,7 +32,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selection.Extend(er, ec)
 				m.selection.End()
 				m.scrollToShowMatch(m.initSelSR)
-				sr, sc, er, ec = m.selection.Bounds()
+				visSr, visSc, _, _ := m.selection.Bounds()
+				sr, sc, er, ec = visSr, visSc, er, ec
 				if sr < len(allLines) {
 					sc = visualToRawCol(allLines[sr], sc, m.tabWidth)
 				}
@@ -42,6 +43,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.searchStr = extractText(allLines, sr, sc, er, ec)
 				if m.searchStr != "" {
 					m.populateMatchLines()
+					for i, ml := range m.matchLines {
+						if ml[0] == visSr && ml[1] == visSc {
+							m.matchIdx = i
+							break
+						}
+					}
 				}
 			}
 		}
