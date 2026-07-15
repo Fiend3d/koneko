@@ -20,7 +20,16 @@ func main() {
 	searchStr := flag.String("search", "", "search string")
 	selectRange := flag.String("select", "", "selection range (e.g. 1:7-1:10)")
 	themeName := flag.String("theme", "dracula", "color theme (autumn, base16, dracula, ferra, github, monokai, nord, tokyonight)")
+	var showVersion bool
+	flag.BoolVar(&showVersion, "v", false, "show version")
+	flag.BoolVar(&showVersion, "version", false, "show version")
 	flag.Parse()
+
+	if showVersion {
+		fmt.Println("koneko version " + version)
+		os.Exit(0)
+	}
+
 	setTheme(*themeName)
 
 	if flag.NArg() < 1 {
