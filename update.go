@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -33,7 +34,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selection.End()
 				m.scrollToShowMatch(m.initSelSR)
 				visSr, visSc, _, _ := m.selection.Bounds()
-				sr, sc, er, ec = visSr, visSc, er, ec
+				sr, sc = visSr, visSc
 				if sr < len(allLines) {
 					sc = visualToRawCol(allLines[sr], sc, m.tabWidth)
 				}
@@ -648,38 +649,52 @@ func (m *Model) copySelection() tea.Cmd {
 
 func rawToVisualCol(line string, rawCol int, tabWidth int) int {
 	vis := 0
-	for raw, ch := range line {
-		if raw >= rawCol {
+	bytePos := 0
+	rest := line
+	for len(rest) > 0 {
+		if bytePos >= rawCol {
 			return vis
 		}
-		if ch == '\t' {
+		cluster, w := ansi.FirstGraphemeCluster(rest, ansi.GraphemeWidth)
+		if len(cluster) == 0 {
+			break
+		}
+		if cluster == "\t" {
 			vis += tabWidth - (vis % tabWidth)
 		} else {
-			vis++
+			vis += w
 		}
+		bytePos += len(cluster)
+		rest = rest[len(cluster):]
 	}
 	return vis
 }
 
 func visualToRawCol(line string, visualCol int, tabWidth int) int {
-	raw := 0
 	vis := 0
-	for _, ch := range line {
-		if vis >= visualCol {
-			return raw
+	byteStart := 0
+	rest := line
+	for len(rest) > 0 {
+		cluster, w := ansi.FirstGraphemeCluster(rest, ansi.GraphemeWidth)
+		if len(cluster) == 0 {
+			break
 		}
-		if ch == '\t' {
+		if cluster == "\t" {
 			tabStop := tabWidth - (vis % tabWidth)
 			if vis+tabStop > visualCol {
-				return raw
+				return byteStart
 			}
 			vis += tabStop
 		} else {
-			vis++
+			if vis+w > visualCol {
+				return byteStart
+			}
+			vis += w
 		}
-		raw++
+		byteStart += len(cluster)
+		rest = rest[len(cluster):]
 	}
-	return raw
+	return byteStart
 }
 
 func (m *Model) findNext(fromRow, fromCol int) (int, int, bool) {
@@ -772,41 +787,73 @@ func (m *Model) populateMatchLines() {
 
 func visualLineWidth(line string, tabWidth int) int {
 	col := 0
-	for _, ch := range line {
-		if ch == '\t' {
+	rest := line
+	for len(rest) > 0 {
+		cluster, w := ansi.FirstGraphemeCluster(rest, ansi.GraphemeWidth)
+		if len(cluster) == 0 {
+			break
+		}
+		if cluster == "\t" {
 			col += tabWidth - (col % tabWidth)
 		} else {
-			col++
+			col += w
 		}
+		rest = rest[len(cluster):]
 	}
 	return col
 }
 
 func findWordBounds(line string, col int, tabWidth int) (int, int) {
 	expanded := ansi.Strip(expandTabs(line, tabWidth))
-	if col >= len(expanded) {
-		col = len(expanded)
+	if col < 0 {
+		return 0, 0
+	}
+	totalVis := ansi.StringWidth(expanded)
+	if col >= totalVis {
+		col = totalVis
 		if col == 0 {
 			return 0, 0
 		}
 		col--
 	}
-	if col < 0 {
-		return 0, 0
+
+	bytePos := visualToByte(expanded, col)
+	if bytePos >= len(expanded) {
+		bytePos = len(expanded)
 	}
 
-	if !isWordChar(rune(expanded[col])) {
+	r, _ := utf8.DecodeLastRuneInString(expanded[:bytePos])
+	if !isWordChar(r) {
 		return col, col
 	}
 
 	start := col
-	for start > 0 && isWordChar(rune(expanded[start-1])) {
-		start--
+	startByte := bytePos
+	for startByte > 0 {
+		r, size := utf8.DecodeLastRuneInString(expanded[:startByte])
+		if !isWordChar(r) {
+			break
+		}
+		_, w := ansi.FirstGraphemeCluster(expanded[startByte-size:startByte], ansi.GraphemeWidth)
+		start -= w
+		startByte -= size
 	}
+	if start < 0 {
+		start = 0
+	}
+
 	end := col
-	for end < len(expanded) && isWordChar(rune(expanded[end])) {
-		end++
+	endByte := bytePos
+	for endByte < len(expanded) {
+		r, size := utf8.DecodeRuneInString(expanded[endByte:])
+		if !isWordChar(r) {
+			break
+		}
+		_, w := ansi.FirstGraphemeCluster(expanded[endByte:endByte+size], ansi.GraphemeWidth)
+		end += w
+		endByte += size
 	}
+
 	return start, end
 }
 

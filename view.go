@@ -201,11 +201,16 @@ func expandTabs(s string, tabWidth int) string {
 			n := tabWidth - (col % tabWidth)
 			b.WriteString(strings.Repeat(" ", n))
 			col += n
+			i++
 		} else {
-			b.WriteByte(s[i])
-			col++
+			cluster, w := ansi.FirstGraphemeCluster(s[i:], ansi.GraphemeWidth)
+			if len(cluster) == 0 {
+				break
+			}
+			b.WriteString(cluster)
+			col += w
+			i += len(cluster)
 		}
-		i++
 	}
 	return b.String()
 }
@@ -223,8 +228,15 @@ func visualToByte(s string, visualPos int) int {
 			}
 			continue
 		}
-		vis++
-		i++
+		cluster, w := ansi.FirstGraphemeCluster(s[i:], ansi.GraphemeWidth)
+		if len(cluster) == 0 {
+			break
+		}
+		if vis+w > visualPos {
+			return i
+		}
+		vis += w
+		i += len(cluster)
 	}
 	return i
 }
@@ -253,13 +265,20 @@ func ansiStateAt(s string, visualPos int) string {
 		if vis >= visualPos {
 			break
 		}
-		vis++
-		i++
+		cluster, w := ansi.FirstGraphemeCluster(s[i:], ansi.GraphemeWidth)
+		if len(cluster) == 0 {
+			break
+		}
+		vis += w
+		i += len(cluster)
 	}
 	return active.String()
 }
 
 func renderStatusBar(w int, filePath string, yOffset, contentH, totalLines int, xOffset int, sel Selection, searchStr string, matchIdx, matchTotal int) string {
+	if w < 2 {
+		return ""
+	}
 	name := filepath.Base(filePath)
 	lineInfo := fmt.Sprintf("%d/%d", yOffset+contentH, totalLines)
 	if xOffset > 0 {
