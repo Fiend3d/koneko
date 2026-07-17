@@ -858,13 +858,6 @@ func findWordBounds(line string, col int, tabWidth int) (int, int) {
 
 // isWordChar reports whether r should be treated as part of a "word" for
 // double-click selection purposes.
-//
-// FIX: Devanagari (and most other Indic-script) dependent vowel signs
-// (matras) and the virama are Unicode *combining marks* (category Mn/Mc),
-// not letters, so unicode.IsLetter alone returns false for them. That
-// caused findWordBounds to stop at every matra, fragmenting Hindi words
-// on double-click. Including unicode.IsMark keeps a base consonant and
-// its combining marks together as a single "word" for selection purposes.
 func isWordChar(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r)
 }
