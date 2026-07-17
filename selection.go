@@ -23,11 +23,11 @@ func (s *Selection) Begin(row, col int) {
 func (s *Selection) Extend(row, col int) {
 	if s.Selecting {
 		if s.anchorIsStart {
-			s.StartRow = row
-			s.StartCol = col
-		} else {
 			s.EndRow = row
 			s.EndCol = col
+		} else {
+			s.StartRow = row
+			s.StartCol = col
 		}
 		return
 	}

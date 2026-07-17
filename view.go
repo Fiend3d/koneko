@@ -83,6 +83,7 @@ func (m Model) View() tea.View {
 				if lineNum >= sr && lineNum <= er {
 					inSelection = true
 					styled = applyLineSelection(styled, lineNum, sr, sc, er, ec)
+					lineWidth = ansi.StringWidth(styled)
 				}
 			}
 
@@ -96,9 +97,6 @@ func (m Model) View() tea.View {
 			}
 
 			lineContent = ansi.Cut(styled, m.xOffset, m.xOffset+w)
-			if lineContent != "" && lineContent[0] != '\x1b' {
-				lineContent = styleBackground.Render(lineContent)
-			}
 			b.WriteString(lineContent)
 		} else if m.showLineNum {
 			b.WriteString(styleBackground.Render(strings.Repeat(" ", gutter)))
@@ -132,49 +130,44 @@ func (m Model) View() tea.View {
 func applyLineSelection(styled string, lineNum, sr, sc, er, ec int) string {
 	totalWidth := ansi.StringWidth(styled)
 
+	if sc > totalWidth {
+		sc = totalWidth
+	}
+	if ec > totalWidth {
+		ec = totalWidth
+	}
+
 	if sr == er {
-		if sc > totalWidth {
-			sc = totalWidth
-		}
-		if ec > totalWidth {
-			ec = totalWidth
-		}
 		if sc >= ec {
 			return styled
 		}
-		startByte := visualToByte(styled, sc)
-		endByte := visualToByte(styled, ec)
-		before := styled[:startByte]
-		after := styled[endByte:]
-		styledSelected := styleSelection.Render(ansi.Strip(styled[startByte:endByte]))
-		fgRestore := ansiStateAt(styled, ec)
-		return before + styledSelected + fgRestore + after
+		before := ansi.Cut(styled, 0, sc)
+		selected := ansi.Cut(styled, sc, ec)
+		after := ansi.Cut(styled, ec, totalWidth)
+		styledSelected := styleSelection.Render(ansi.Strip(selected))
+		return before + styledSelected + after
 	}
 
 	if lineNum == er {
 		if ec <= 0 {
 			return styled
 		}
-		if ec > totalWidth {
-			ec = totalWidth
+		if ec >= totalWidth {
+			return styleSelection.Render(ansi.Strip(styled))
 		}
-		endByte := visualToByte(styled, ec)
-		if endByte == 0 {
-			return styled
-		}
-		after := styled[endByte:]
-		styledSelected := styleSelection.Render(ansi.Strip(styled[:endByte]))
-		fgRestore := ansiStateAt(styled, ec)
-		return styledSelected + fgRestore + after
+		selected := ansi.Cut(styled, 0, ec)
+		after := ansi.Cut(styled, ec, totalWidth)
+		styledSelected := styleSelection.Render(ansi.Strip(selected))
+		return styledSelected + after
 	}
 
 	if lineNum == sr {
 		if sc >= totalWidth {
 			return styled
 		}
-		startByte := visualToByte(styled, sc)
-		before := styled[:startByte]
-		styledSelected := styleSelection.Render(ansi.Strip(styled[startByte:]))
+		before := ansi.Cut(styled, 0, sc)
+		selected := ansi.Cut(styled, sc, totalWidth)
+		styledSelected := styleSelection.Render(ansi.Strip(selected))
 		return before + styledSelected
 	}
 
@@ -186,31 +179,20 @@ func expandTabs(s string, tabWidth int) string {
 	col := 0
 	i := 0
 	for i < len(s) {
-		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
-			start := i
-			for i < len(s) && s[i] != 'm' {
-				i++
-			}
-			if i < len(s) {
-				i++
-			}
-			b.WriteString(s[start:i])
-			continue
-		}
 		if s[i] == '\t' {
 			n := tabWidth - (col % tabWidth)
 			b.WriteString(strings.Repeat(" ", n))
 			col += n
 			i++
-		} else {
-			cluster, w := ansi.FirstGraphemeCluster(s[i:], ansi.GraphemeWidth)
-			if len(cluster) == 0 {
-				break
-			}
-			b.WriteString(cluster)
-			col += w
-			i += len(cluster)
+			continue
 		}
+		cluster, w := ansi.FirstGraphemeCluster(s[i:], ansi.GraphemeWidth)
+		if len(cluster) == 0 {
+			break
+		}
+		b.WriteString(cluster)
+		col += w
+		i += len(cluster)
 	}
 	return b.String()
 }
@@ -219,17 +201,8 @@ func visualToByte(s string, visualPos int) int {
 	i := 0
 	vis := 0
 	for i < len(s) && vis < visualPos {
-		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
-			for i < len(s) && s[i] != 'm' {
-				i++
-			}
-			if i < len(s) {
-				i++
-			}
-			continue
-		}
 		cluster, w := ansi.FirstGraphemeCluster(s[i:], ansi.GraphemeWidth)
-		if len(cluster) == 0 {
+		if len(cluster) == 0 || w == 0 {
 			break
 		}
 		if vis+w > visualPos {
@@ -239,40 +212,6 @@ func visualToByte(s string, visualPos int) int {
 		i += len(cluster)
 	}
 	return i
-}
-
-func ansiStateAt(s string, visualPos int) string {
-	var active strings.Builder
-	i := 0
-	vis := 0
-	for i < len(s) {
-		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
-			start := i
-			for i < len(s) && s[i] != 'm' {
-				i++
-			}
-			if i < len(s) {
-				i++
-			}
-			seq := s[start:i]
-			if seq == "\x1b[0m" || seq == "\x1b[m" {
-				active.Reset()
-			} else {
-				active.WriteString(seq)
-			}
-			continue
-		}
-		if vis >= visualPos {
-			break
-		}
-		cluster, w := ansi.FirstGraphemeCluster(s[i:], ansi.GraphemeWidth)
-		if len(cluster) == 0 {
-			break
-		}
-		vis += w
-		i += len(cluster)
-	}
-	return active.String()
 }
 
 func renderStatusBar(w int, filePath string, yOffset, contentH, totalLines int, xOffset int, sel Selection, searchStr string, matchIdx, matchTotal int) string {

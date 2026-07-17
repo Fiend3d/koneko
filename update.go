@@ -95,7 +95,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						row, col := m.matchLines[m.matchIdx][0], m.matchLines[m.matchIdx][1]
 						m.selection.Clear()
 						m.selection.Begin(row, col)
-						m.selection.Extend(row, col+len(m.searchStr))
+						m.selection.Extend(row, col+ansi.StringWidth(m.searchStr))
 						m.selection.End()
 						m.scrollToShowMatch(row)
 						return m, m.triggerHighlight()
@@ -275,7 +275,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			row, col := m.matchLines[m.matchIdx][0], m.matchLines[m.matchIdx][1]
 			m.selection.Clear()
 			m.selection.Begin(row, col)
-			m.selection.Extend(row, col+len(m.searchStr))
+			m.selection.Extend(row, col+ansi.StringWidth(m.searchStr))
 			m.selection.End()
 			m.scrollToShowMatch(row)
 			return m, m.triggerHighlight()
@@ -290,7 +290,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			row, col := m.matchLines[m.matchIdx][0], m.matchLines[m.matchIdx][1]
 			m.selection.Clear()
 			m.selection.Begin(row, col)
-			m.selection.Extend(row, col+len(m.searchStr))
+			m.selection.Extend(row, col+ansi.StringWidth(m.searchStr))
 			m.selection.End()
 			m.scrollToShowMatch(row)
 			return m, m.triggerHighlight()
@@ -389,7 +389,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if mouse.Button == tea.MouseLeft {
 			now := time.Now()
-			if contentRow == m.lastClickRow && col == m.lastClickCol && now.Sub(m.lastClickTime) < 500*time.Millisecond {
+			if contentRow == m.lastClickRow && contentCol == m.lastClickCol && now.Sub(m.lastClickTime) < 500*time.Millisecond {
 				line, err := m.fileBuf.Line(contentRow)
 				if err == nil {
 					start, end := findWordBounds(line, contentCol, m.tabWidth)
@@ -402,7 +402,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lastClickTime = time.Time{}
 			} else {
 				m.lastClickRow = contentRow
-				m.lastClickCol = col
+				m.lastClickCol = contentCol
 				m.lastClickTime = now
 				m.selection.Begin(contentRow, contentCol)
 			}
