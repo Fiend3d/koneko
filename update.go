@@ -33,6 +33,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selection.Extend(er, ec)
 				m.selection.End()
 				m.scrollToShowMatch(m.initSelSR)
+
 				visSr, visSc, _, _ := m.selection.Bounds()
 				sr, sc = visSr, visSc
 				if sr < len(allLines) {
@@ -53,7 +54,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-
 		return m, m.triggerHighlight()
 
 	case errMsg:
@@ -314,14 +314,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showScrollbar {
 			contentWidth--
 		}
+
 		if row >= m.contentHeight() {
 			return m, nil
 		}
+
 		if col < 0 {
 			contentRow := m.yOffset + row
 			if contentRow >= m.totalLines {
 				return m, nil
 			}
+
 			if mouse.Button == tea.MouseLeft {
 				line, err := m.fileBuf.Line(contentRow)
 				width := 0
@@ -339,6 +342,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lastClickCol = 0
 				m.lastClickTime = time.Now()
 			}
+
 			if mouse.Button == tea.MouseRight {
 				line, err := m.fileBuf.Line(contentRow)
 				width := 0
@@ -346,7 +350,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					width = visualLineWidth(line, m.tabWidth)
 				}
 				if m.selection.Active || m.selection.Selecting {
-				sr, _, er, _ := m.selection.Bounds()
+					sr, _, er, _ := m.selection.Bounds()
 					if contentRow < sr {
 						m.selection.StartRow = contentRow
 						m.selection.StartCol = 0
@@ -368,9 +372,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+
 		if col >= contentWidth {
 			return m, nil
 		}
+
 		contentRow := m.yOffset + row
 		if contentRow >= m.totalLines {
 			return m, nil
@@ -490,6 +496,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+
 		switch mouse.Button {
 		case tea.MouseWheelUp:
 			step := 3
@@ -630,16 +637,13 @@ func (m *Model) copySelection() tea.Cmd {
 	if err != nil {
 		return nil
 	}
-
 	sr, sc, er, ec := m.selection.Bounds()
-
 	if sr < len(allLines) {
 		sc = visualToRawCol(allLines[sr], sc, m.tabWidth)
 	}
 	if er < len(allLines) {
 		ec = visualToRawCol(allLines[er], ec, m.tabWidth)
 	}
-
 	text := extractText(allLines, sr, sc, er, ec)
 	if text == "" {
 		return nil
@@ -816,17 +820,14 @@ func findWordBounds(line string, col int, tabWidth int) (int, int) {
 		}
 		col--
 	}
-
 	bytePos := visualToByte(expanded, col)
 	if bytePos >= len(expanded) {
 		bytePos = len(expanded)
 	}
-
 	r, _ := utf8.DecodeLastRuneInString(expanded[:bytePos])
 	if !isWordChar(r) {
 		return col, col
 	}
-
 	start := col
 	startByte := bytePos
 	for startByte > 0 {
@@ -841,7 +842,6 @@ func findWordBounds(line string, col int, tabWidth int) (int, int) {
 	if start < 0 {
 		start = 0
 	}
-
 	end := col
 	endByte := bytePos
 	for endByte < len(expanded) {
@@ -853,10 +853,18 @@ func findWordBounds(line string, col int, tabWidth int) (int, int) {
 		end += w
 		endByte += size
 	}
-
 	return start, end
 }
 
+// isWordChar reports whether r should be treated as part of a "word" for
+// double-click selection purposes.
+//
+// FIX: Devanagari (and most other Indic-script) dependent vowel signs
+// (matras) and the virama are Unicode *combining marks* (category Mn/Mc),
+// not letters, so unicode.IsLetter alone returns false for them. That
+// caused findWordBounds to stop at every matra, fragmenting Hindi words
+// on double-click. Including unicode.IsMark keeps a base consonant and
+// its combining marks together as a single "word" for selection purposes.
 func isWordChar(r rune) bool {
-	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r)
 }

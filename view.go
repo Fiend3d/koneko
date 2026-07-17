@@ -21,10 +21,12 @@ func (m Model) View() tea.View {
 		v.SetContent("Loading...")
 		return v
 	}
+
 	if m.err != nil {
 		v.SetContent("Error: " + m.err.Error())
 		return v
 	}
+
 	if m.totalLines == 0 {
 		v.SetContent("(empty file)")
 		return v
@@ -51,7 +53,6 @@ func (m Model) View() tea.View {
 	}
 
 	var b strings.Builder
-
 	for row := 0; row < contentH; row++ {
 		var lineContent string
 		lineWidth := 0
@@ -59,11 +60,13 @@ func (m Model) View() tea.View {
 		if row > 0 {
 			b.WriteByte('\n')
 		}
+
 		if row < len(lines) {
 			lineNum := from + row
 			var styled string
 			lineWidth = 0
 			cached := false
+
 			if m.highlight {
 				var w int
 				styled, w, cached = m.highlighter.StyledLine(lineNum)
@@ -71,6 +74,7 @@ func (m Model) View() tea.View {
 					lineWidth = w
 				}
 			}
+
 			if !cached {
 				styled = strings.ReplaceAll(lines[row], "\r", "")
 				styled = expandTabs(styled, m.tabWidth)
@@ -101,6 +105,7 @@ func (m Model) View() tea.View {
 		} else if m.showLineNum {
 			b.WriteString(styleBackground.Render(strings.Repeat(" ", gutter)))
 		}
+
 		if m.showScrollbar {
 			visWidth := max(0, min(w, lineWidth-m.xOffset))
 			if pad := w - visWidth; pad > 0 {
@@ -129,7 +134,6 @@ func (m Model) View() tea.View {
 
 func applyLineSelection(styled string, lineNum, sr, sc, er, ec int) string {
 	totalWidth := ansi.StringWidth(styled)
-
 	if sc > totalWidth {
 		sc = totalWidth
 	}
@@ -218,27 +222,28 @@ func renderStatusBar(w int, filePath string, yOffset, contentH, totalLines int, 
 	if w < 2 {
 		return ""
 	}
+
 	name := filepath.Base(filePath)
 	lineInfo := fmt.Sprintf("%d/%d", yOffset+contentH, totalLines)
 	if xOffset > 0 {
-		lineInfo += fmt.Sprintf("  +%d", xOffset)
+		lineInfo += fmt.Sprintf(" +%d", xOffset)
 	}
 
 	selInfo := ""
 	if sel.Active || sel.Selecting {
 		sr, sc, er, ec := sel.Bounds()
-		selInfo = fmt.Sprintf("  sel %d:%d-%d:%d", sr+1, sc+1, er+1, ec+1)
+		selInfo = fmt.Sprintf(" sel %d:%d-%d:%d", sr+1, sc+1, er+1, ec+1)
 	}
 
 	searchInfo := ""
 	if searchStr != "" && matchTotal > 0 {
-		searchInfo = fmt.Sprintf("  %s %d/%d", searchStr, matchIdx+1, matchTotal)
+		searchInfo = fmt.Sprintf(" %s %d/%d", searchStr, matchIdx+1, matchTotal)
 	}
 
 	leftText := name + selInfo + searchInfo
 	rightText := lineInfo
-
 	mid := w - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
+
 	if mid < 0 {
 		if selInfo != "" {
 			leftText = name + searchInfo
