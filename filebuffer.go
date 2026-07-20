@@ -1,15 +1,24 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"os"
 	"strings"
 )
 
+// avgLineGuess is the bytes-per-line estimate used to size the offset table up
+// front, so indexing a large file does not repeatedly grow and copy the slice.
+const avgLineGuess = 32
+
 type FileBuffer struct {
 	f       *os.File
 	offsets []int64
-	size    int64
+
+	// Single-entry cache: the view and mouse handling ask for the same line
+	// many times in a row, and each miss costs a read syscall.
+	cachedNum  int
+	cachedLine string
+	cachedOK   bool
 }
 
 func OpenFileBuffer(path string) (*FileBuffer, error) {
@@ -24,22 +33,32 @@ func OpenFileBuffer(path string) (*FileBuffer, error) {
 	}
 	size := info.Size()
 
-	var offsets []int64
-	offsets = append(offsets, 0)
-	reader := bufio.NewReader(f)
-	var pos int64
+	offsets := make([]int64, 1, size/avgLineGuess+16)
+	buf := make([]byte, 1<<20)
+	var base int64
 	for {
-		line, err := reader.ReadString('\n')
-		if len(line) > 0 {
-			pos += int64(len(line))
-			offsets = append(offsets, pos)
+		n, err := f.Read(buf)
+		chunk := buf[:n]
+		off := 0
+		for {
+			j := bytes.IndexByte(chunk[off:], '\n')
+			if j < 0 {
+				break
+			}
+			off += j + 1
+			offsets = append(offsets, base+int64(off))
 		}
+		base += int64(n)
 		if err != nil {
 			break
 		}
 	}
+	// A final line with no trailing newline still counts as a line.
+	if base > 0 && offsets[len(offsets)-1] != base {
+		offsets = append(offsets, base)
+	}
 
-	return &FileBuffer{f: f, offsets: offsets, size: size}, nil
+	return &FileBuffer{f: f, offsets: offsets}, nil
 }
 
 func (fb *FileBuffer) LineCount() int {
@@ -53,6 +72,9 @@ func (fb *FileBuffer) Line(n int) (string, error) {
 	if n < 0 || n >= len(fb.offsets)-1 {
 		return "", nil
 	}
+	if fb.cachedOK && fb.cachedNum == n {
+		return fb.cachedLine, nil
+	}
 	start := fb.offsets[n]
 	end := fb.offsets[n+1]
 	buf := make([]byte, end-start)
@@ -62,6 +84,7 @@ func (fb *FileBuffer) Line(n int) (string, error) {
 	}
 	s := string(buf)
 	s = strings.TrimRight(s, "\r\n")
+	fb.cachedNum, fb.cachedLine, fb.cachedOK = n, s, true
 	return s, nil
 }
 
