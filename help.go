@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	helpLines    = buildHelpLines()
-	maxKeyWidth  int
+	helpLines   = buildHelpLines()
+	maxKeyWidth int
 )
 
 func buildHelpLines() []string {
@@ -77,33 +77,25 @@ func buildHelpLines() []string {
 	return lines
 }
 
-func sectionAccent(idx int) lipgloss.Style {
-	switch {
-	case idx == 0:
-		return lipgloss.NewStyle().Foreground(theme.Foreground)
-	case idx == 2, idx == 11, idx == 19, idx == 26, idx == 31, idx == 41:
-		return theme.TokenStyles[chroma.Keyword]
-	default:
-		return lipgloss.NewStyle().Foreground(theme.Foreground)
-	}
-}
-
-func helpLineStyle(idx int, line string) string {
+func helpLineStyle(line string) string {
+	bg := theme.Background
 	if strings.HasPrefix(line, "   ") {
 		rest := line[3:]
 		gapStart := strings.Index(rest, "  ")
 		if gapStart > 0 {
 			key := rest[:gapStart]
 			desc := strings.TrimLeft(rest[gapStart:], " ")
-			keyStyle := theme.TokenStyles[chroma.NameFunction].Background(theme.Background)
-			descStyle := lipgloss.NewStyle().Foreground(theme.DimText).Background(theme.Background)
+			keyStyle := theme.TokenStyles[chroma.LiteralString].Background(bg)
+			descStyle := theme.TokenStyles[chroma.Comment].Background(bg)
 			keyPadded := key + strings.Repeat(" ", maxKeyWidth-len(key))
-			styled := keyStyle.Render("   "+keyPadded) + descStyle.Render("  "+desc)
+			styled := lipgloss.NewStyle().Background(bg).Foreground(theme.Foreground).Render("   ") +
+				keyStyle.Render(keyPadded) +
+				descStyle.Render("  "+desc)
 			return styled
 		}
 	}
 
-	return sectionAccent(idx).Background(theme.Background).Render(line)
+	return theme.TokenStyles[chroma.NameFunction].Background(bg).Render(line)
 }
 
 func renderHelp(m Model) string {
@@ -127,7 +119,7 @@ func renderHelp(m Model) string {
 			if line == "" {
 				b.WriteString(bg.Render(strings.Repeat(" ", m.width)))
 			} else {
-				styled := helpLineStyle(absIdx, line)
+				styled := helpLineStyle(line)
 				if pad := m.width - ansi.StringWidth(styled); pad > 0 {
 					styled += bg.Render(strings.Repeat(" ", pad))
 				}
