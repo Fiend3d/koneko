@@ -16,7 +16,7 @@ var (
 
 func buildHelpLines() []string {
 	lines := []string{
-		" Koneko v" + version + "",
+		" Koneko v" + version,
 		"",
 		" NAVIGATION",
 		"   up/k              scroll up 1 line",
@@ -79,6 +79,7 @@ func buildHelpLines() []string {
 
 func helpLineStyle(line string) string {
 	bg := theme.Background
+	defStyle := lipgloss.NewStyle().Background(bg).Foreground(theme.Foreground)
 	if strings.HasPrefix(line, "   ") {
 		rest := line[3:]
 		gapStart := strings.Index(rest, "  ")
@@ -88,11 +89,11 @@ func helpLineStyle(line string) string {
 			keyStyle := theme.TokenStyles[chroma.LiteralString].Background(bg)
 			descStyle := theme.TokenStyles[chroma.Comment].Background(bg)
 			keyPadded := key + strings.Repeat(" ", maxKeyWidth-len(key))
-			styled := lipgloss.NewStyle().Background(bg).Foreground(theme.Foreground).Render("   ") +
+			return defStyle.Render("   ") +
 				keyStyle.Render(keyPadded) +
 				descStyle.Render("  "+desc)
-			return styled
 		}
+		return defStyle.Render(line)
 	}
 
 	return theme.TokenStyles[chroma.NameFunction].Background(bg).Render(line)
