@@ -20,29 +20,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.highlightRange = [2]int{-1, -1}
 
 		if m.hasInitSelect {
-			allLines, err := m.fileBuf.Lines(0, m.totalLines)
-			if err == nil {
-				sr, sc, er, ec := m.initSelSR, m.initSelSC, m.initSelER, m.initSelEC
-				if sr < len(allLines) {
-					sc = rawToVisualCol(allLines[sr], sc, m.tabWidth)
-				}
-				if er < len(allLines) {
-					ec = rawToVisualCol(allLines[er], ec, m.tabWidth)
+			sr, sc, er, ec := m.initSelSR, m.initSelSC, m.initSelER, m.initSelEC
+			if posLess(er, ec, sr, sc) {
+				sr, sc, er, ec = er, ec, sr, sc
+			}
+			// Only the selected rows are needed, not the whole file.
+			lines, err := m.fileBuf.Lines(sr, er+1)
+			if err == nil && len(lines) > 0 {
+				last := er - sr
+				sc = rawToVisualCol(lines[0], sc, m.tabWidth)
+				if last < len(lines) {
+					ec = rawToVisualCol(lines[last], ec, m.tabWidth)
 				}
 				m.selection.Begin(sr, sc)
 				m.selection.Extend(er, ec)
 				m.selection.End()
-				m.scrollToShowMatch(m.initSelSR)
+				m.scrollToShowMatch(sr)
 
-				visSr, visSc, _, _ := m.selection.Bounds()
-				sr, sc = visSr, visSc
-				if sr < len(allLines) {
-					sc = visualToRawCol(allLines[sr], sc, m.tabWidth)
+				visSr, visSc, visEr, visEc := m.selection.Bounds()
+				rawSc := visualToRawCol(lines[visSr-sr], visSc, m.tabWidth)
+				rawEc := visEc
+				if idx := visEr - sr; idx >= 0 && idx < len(lines) {
+					rawEc = visualToRawCol(lines[idx], visEc, m.tabWidth)
 				}
-				if er < len(allLines) {
-					ec = visualToRawCol(allLines[er], ec, m.tabWidth)
-				}
-				m.searchStr = extractText(allLines, sr, sc, er, ec)
+				m.searchStr = extractText(lines, visSr-sr, rawSc, visEr-sr, rawEc)
 				if m.searchStr != "" {
 					m.populateMatchLines()
 					for i, ml := range m.matchLines {
@@ -230,11 +231,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "x", "X":
 			if m.selection.Active || m.selection.Selecting {
 				sr, _, er, _ := m.selection.Bounds()
-				m.selection.Begin(sr, 0)
-				line, err := m.fileBuf.Line(er)
-				if err == nil {
-					m.selection.Extend(er, visualLineWidth(line, m.tabWidth))
-				}
+				m.beginSelect(SelectLine, sr, 0)
+				m.extendSelect(SelectLine, er, 0)
 				m.selection.End()
 				return m, nil
 			}
@@ -309,111 +307,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.triggerHighlight()
 		}
 
+		if row >= m.contentHeight() {
+			return m, nil
+		}
+
 		col := mouse.X - m.lineNumWidth()
 		contentWidth := m.width - m.lineNumWidth()
 		if m.showScrollbar {
 			contentWidth--
 		}
 
-		if row >= m.contentHeight() {
-			return m, nil
-		}
-
-		if col < 0 {
-			contentRow := m.yOffset + row
-			if contentRow >= m.totalLines {
-				return m, nil
-			}
-
-			if mouse.Button == tea.MouseLeft {
-				line, err := m.fileBuf.Line(contentRow)
-				width := 0
-				if err == nil {
-					width = visualLineWidth(line, m.tabWidth)
-				}
-				m.selection.Begin(contentRow, 0)
-				m.selection.EndRow = contentRow
-				m.selection.EndCol = width
-				m.selection.Selecting = true
-				m.selection.Active = false
-				m.gutterSelect = true
-				m.gutterAnchor = contentRow
-				m.lastClickRow = contentRow
-				m.lastClickCol = 0
-				m.lastClickTime = time.Now()
-			}
-
-			if mouse.Button == tea.MouseRight {
-				line, err := m.fileBuf.Line(contentRow)
-				width := 0
-				if err == nil {
-					width = visualLineWidth(line, m.tabWidth)
-				}
-				if m.selection.Active || m.selection.Selecting {
-					sr, _, er, _ := m.selection.Bounds()
-					if contentRow < sr {
-						m.selection.StartRow = contentRow
-						m.selection.StartCol = 0
-					} else if contentRow > er {
-						m.selection.EndRow = contentRow
-						m.selection.EndCol = width
-					} else {
-						m.selection.EndRow = contentRow
-						m.selection.EndCol = width
-					}
-				} else {
-					m.selection.Begin(contentRow, 0)
-					m.selection.EndRow = contentRow
-					m.selection.EndCol = width
-				}
-				m.selection.Selecting = false
-				m.selection.Active = true
-				return m, nil
-			}
-			return m, nil
-		}
-
-		if col >= contentWidth {
-			return m, nil
-		}
-
 		contentRow := m.yOffset + row
 		if contentRow >= m.totalLines {
 			return m, nil
 		}
-		contentCol := col + m.xOffset
 
-		if mouse.Button == tea.MouseRight {
-			if m.selection.Active || m.selection.Selecting {
-				m.selection.Extend(contentRow, contentCol)
-				m.selection.End()
-			} else {
-				m.selection.Begin(contentRow, contentCol)
-				m.selection.End()
-				m.selection.Active = true
-			}
+		inGutter := col < 0
+		if !inGutter && col >= contentWidth {
 			return m, nil
 		}
+		contentCol := col + m.xOffset
 
-		if mouse.Button == tea.MouseLeft {
-			now := time.Now()
-			if contentRow == m.lastClickRow && contentCol == m.lastClickCol && now.Sub(m.lastClickTime) < 500*time.Millisecond {
-				line, err := m.fileBuf.Line(contentRow)
-				if err == nil {
-					start, end := findWordBounds(line, contentCol, m.tabWidth)
-					if start < end {
-						m.selection.Begin(contentRow, start)
-						m.selection.Extend(contentRow, end)
-						m.selection.End()
-					}
-				}
-				m.lastClickTime = time.Time{}
-			} else {
-				m.lastClickRow = contentRow
-				m.lastClickCol = contentCol
-				m.lastClickTime = now
-				m.selection.Begin(contentRow, contentCol)
+		switch mouse.Button {
+		case tea.MouseLeft:
+			if inGutter {
+				m.clickCountAt(contentRow, -1)
+				m.beginSelect(SelectLine, contentRow, 0)
+				return m, nil
 			}
+			mode := SelectChar
+			switch m.clickCountAt(contentRow, contentCol) {
+			case 2:
+				mode = SelectWord
+			case 3:
+				mode = SelectLine
+			}
+			m.beginSelect(mode, contentRow, contentCol)
+
+		case tea.MouseRight:
+			// Right click extends the existing selection by moving whichever
+			// end is nearer, keeping the far end anchored.
+			if inGutter {
+				m.extendSelect(SelectLine, contentRow, 0)
+			} else {
+				m.extendSelect(m.selection.Mode, contentRow, contentCol)
+			}
+			m.selection.End()
+			return m, nil
 		}
 
 	case tea.MouseMotionMsg:
@@ -424,57 +364,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scrollToRow(msg.Mouse().Y)
 			return m, m.triggerHighlight()
 		}
-		if m.selection.Selecting {
-			mouse := msg.Mouse()
-			row := mouse.Y
-			col := mouse.X - m.lineNumWidth()
-			contentWidth := m.width - m.lineNumWidth()
-			if m.showScrollbar {
-				contentWidth--
-			}
-			if row >= m.contentHeight() {
-				row = m.contentHeight() - 1
-			}
-			if row < 0 {
-				row = 0
-			}
-			contentRow := m.yOffset + row
-			if m.totalLines > 0 {
-				contentRow = min(contentRow, m.totalLines-1)
-			}
-
-			if m.gutterSelect {
-				if contentRow < m.gutterAnchor {
-					m.selection.StartRow = contentRow
-					m.selection.StartCol = 0
-				} else {
-					line, err := m.fileBuf.Line(contentRow)
-					width := 0
-					if err == nil {
-						width = visualLineWidth(line, m.tabWidth)
-					}
-					m.selection.EndRow = contentRow
-					m.selection.EndCol = width
-				}
-				break
-			}
-
-			if col > contentWidth {
-				col = contentWidth
-			}
-			if col < 0 {
-				col = 0
-			}
-			contentCol := col + m.xOffset
-			m.selection.Extend(contentRow, contentCol)
+		if !m.selection.Selecting {
+			break
 		}
+		mouse := msg.Mouse()
+		row := mouse.Y
+		col := mouse.X - m.lineNumWidth()
+		contentWidth := m.width - m.lineNumWidth()
+		if m.showScrollbar {
+			contentWidth--
+		}
+
+		// Dragging past the top or bottom edge scrolls the view along.
+		var cmd tea.Cmd
+		if row < 0 {
+			m.yOffset += row
+			m.clampOffset()
+			cmd = m.triggerHighlight()
+			row = 0
+		} else if row >= m.contentHeight() {
+			m.yOffset += row - m.contentHeight() + 1
+			m.clampOffset()
+			cmd = m.triggerHighlight()
+			row = m.contentHeight() - 1
+		}
+
+		contentRow := m.yOffset + row
+		if m.totalLines > 0 {
+			contentRow = min(contentRow, m.totalLines-1)
+		}
+		contentRow = max(contentRow, 0)
+
+		col = max(min(col, contentWidth), 0)
+		m.extendSelect(m.selection.Mode, contentRow, col+m.xOffset)
+		return m, cmd
 
 	case tea.MouseReleaseMsg:
 		if m.helpMode {
 			return m, nil
 		}
 		m.scrollbarDrag = false
-		m.gutterSelect = false
 		m.selection.End()
 
 	case tea.MouseWheelMsg:
@@ -635,18 +564,18 @@ func (m *Model) triggerHighlight() tea.Cmd {
 }
 
 func (m *Model) copySelection() tea.Cmd {
-	allLines, err := m.fileBuf.Lines(0, m.totalLines)
-	if err != nil {
+	sr, sc, er, ec := m.selection.Bounds()
+	// Read only the selected rows rather than the whole file.
+	lines, err := m.fileBuf.Lines(sr, er+1)
+	if err != nil || len(lines) == 0 {
 		return nil
 	}
-	sr, sc, er, ec := m.selection.Bounds()
-	if sr < len(allLines) {
-		sc = visualToRawCol(allLines[sr], sc, m.tabWidth)
+	last := er - sr
+	sc = visualToRawCol(lines[0], sc, m.tabWidth)
+	if last < len(lines) {
+		ec = visualToRawCol(lines[last], ec, m.tabWidth)
 	}
-	if er < len(allLines) {
-		ec = visualToRawCol(allLines[er], ec, m.tabWidth)
-	}
-	text := extractText(allLines, sr, sc, er, ec)
+	text := extractText(lines, 0, sc, last, ec)
 	if text == "" {
 		return nil
 	}
@@ -703,59 +632,6 @@ func visualToRawCol(line string, visualCol int, tabWidth int) int {
 	return byteStart
 }
 
-func (m *Model) findNext(fromRow, fromCol int) (int, int, bool) {
-	allLines, err := m.fileBuf.Lines(0, m.totalLines)
-	if err != nil || m.searchStr == "" {
-		return 0, 0, false
-	}
-	searchLower := strings.ToLower(m.searchStr)
-	for row := fromRow; row < len(allLines); row++ {
-		line := expandTabs(allLines[row], m.tabWidth)
-		searchIn := line
-		offset := 0
-		if row == fromRow {
-			if fromCol >= len(line) {
-				continue
-			}
-			searchIn = line[fromCol:]
-			offset = fromCol
-		}
-		lineLower := strings.ToLower(searchIn)
-		idx := strings.Index(lineLower, searchLower)
-		if idx != -1 {
-			return row, offset + idx, true
-		}
-	}
-	return 0, 0, false
-}
-
-func (m *Model) findPrev(fromRow, fromCol int) (int, int, bool) {
-	if fromCol < 0 {
-		fromCol = 0
-	}
-	allLines, err := m.fileBuf.Lines(0, m.totalLines)
-	if err != nil || m.searchStr == "" {
-		return 0, 0, false
-	}
-	searchLower := strings.ToLower(m.searchStr)
-	for row := fromRow; row >= 0; row-- {
-		line := expandTabs(allLines[row], m.tabWidth)
-		searchIn := line
-		if row == fromRow {
-			if fromCol > len(line) {
-				fromCol = len(line)
-			}
-			searchIn = line[:fromCol]
-		}
-		lineLower := strings.ToLower(searchIn)
-		idx := strings.LastIndex(lineLower, searchLower)
-		if idx != -1 {
-			return row, idx, true
-		}
-	}
-	return 0, 0, false
-}
-
 func (m *Model) scrollToShowMatch(row int) {
 	targetY := row - m.contentHeight()/3
 	if targetY < 0 {
@@ -765,33 +641,117 @@ func (m *Model) scrollToShowMatch(row int) {
 	m.clampOffset()
 }
 
+// matchScanBlock is how many lines the search scanner reads per batch.
+const matchScanBlock = 4096
+
 func (m *Model) populateMatchLines() {
 	m.matchLines = nil
 	if m.searchStr == "" {
 		return
 	}
-	allLines, err := m.fileBuf.Lines(0, m.totalLines)
-	if err != nil {
-		return
-	}
 	searchLower := strings.ToLower(m.searchStr)
-	for row, line := range allLines {
-		expanded := expandTabs(line, m.tabWidth)
-		lineLower := strings.ToLower(expanded)
-		start := 0
-		for {
-			idx := strings.Index(lineLower[start:], searchLower)
-			if idx == -1 {
-				break
+	// Scan in blocks so peak memory stays bounded no matter how large the file
+	// is, instead of materialising every line at once.
+	for from := 0; from < m.totalLines; from += matchScanBlock {
+		to := min(from+matchScanBlock, m.totalLines)
+		lines, err := m.fileBuf.Lines(from, to)
+		if err != nil {
+			return
+		}
+		for i, line := range lines {
+			expanded := expandTabs(line, m.tabWidth)
+			start := 0
+			for start <= len(expanded) {
+				idx := indexFold(expanded[start:], searchLower)
+				if idx == -1 {
+					break
+				}
+				col := start + idx
+				m.matchLines = append(m.matchLines, [2]int{from + i, col})
+				start = col + len(searchLower)
 			}
-			col := start + idx
-			m.matchLines = append(m.matchLines, [2]int{row, col})
-			start = col + len(searchLower)
 		}
 	}
 }
 
+// indexFold reports the index of the first case-insensitive occurrence of
+// subLower in s, where subLower is already lowercase. The all-ASCII path avoids
+// the per-line allocation that lowercasing the haystack would cost.
+func indexFold(s, subLower string) int {
+	if len(subLower) == 0 {
+		return 0
+	}
+	if len(subLower) > len(s) {
+		return -1
+	}
+	if !isASCII(s) || !isASCII(subLower) {
+		return strings.Index(strings.ToLower(s), subLower)
+	}
+	c := subLower[0]
+	cUp := c
+	if c >= 'a' && c <= 'z' {
+		cUp = c - 'a' + 'A'
+	}
+	// A plain byte loop measured faster here than skipping ahead with
+	// IndexByte, which has to scan twice to cover both letter cases.
+	for i := 0; i+len(subLower) <= len(s); i++ {
+		b := s[i]
+		if b != c && b != cUp {
+			continue
+		}
+		if equalFoldASCII(s[i:i+len(subLower)], subLower) {
+			return i
+		}
+	}
+	return -1
+}
+
+// equalFoldASCII compares against an already-lowercased ASCII string.
+func equalFoldASCII(s, lower string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		if c != lower[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
+// asciiWidth returns the display width of a line made only of printable ASCII,
+// where every byte is exactly one cell. ok is false when the line contains
+// anything needing real grapheme measurement.
+func asciiWidth(s string, tabWidth int) (int, bool) {
+	col := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\t':
+			col += tabWidth - (col % tabWidth)
+		case c < 0x20 || c >= 0x7f:
+			return 0, false
+		default:
+			col++
+		}
+	}
+	return col, true
+}
+
 func visualLineWidth(line string, tabWidth int) int {
+	if w, ok := asciiWidth(line, tabWidth); ok {
+		return w
+	}
 	col := 0
 	rest := line
 	for len(rest) > 0 {

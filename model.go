@@ -27,8 +27,6 @@ type Model struct {
 	showLineNum    bool
 	showScrollbar  bool
 	scrollbarDrag  bool
-	gutterSelect   bool
-	gutterAnchor   int
 	highlight      bool
 	tabWidth       int
 	searchStr      string
@@ -44,6 +42,7 @@ type Model struct {
 	lastClickRow   int
 	lastClickCol   int
 	lastClickTime  time.Time
+	clickCount     int
 	lastWheelTime  time.Time
 	helpMode       bool
 	helpOffset     int
@@ -105,6 +104,59 @@ func (m Model) visibleLineRange() (int, int) {
 		to = m.totalLines
 	}
 	return from, to
+}
+
+func (m *Model) lineWidth(row int) int {
+	line, err := m.fileBuf.Line(row)
+	if err != nil {
+		return 0
+	}
+	return visualLineWidth(line, m.tabWidth)
+}
+
+// rangeForPoint expands a position into the range the given granularity covers:
+// the position itself, the word under it, or the whole line.
+func (m *Model) rangeForPoint(mode SelectMode, row, col int) (int, int, int, int) {
+	switch mode {
+	case SelectLine:
+		return row, 0, row, m.lineWidth(row)
+	case SelectWord:
+		if line, err := m.fileBuf.Line(row); err == nil {
+			start, end := findWordBounds(line, col, m.tabWidth)
+			if start < end {
+				return row, start, row, end
+			}
+		}
+	}
+	return row, col, row, col
+}
+
+func (m *Model) beginSelect(mode SelectMode, row, col int) {
+	sr, sc, er, ec := m.rangeForPoint(mode, row, col)
+	m.selection.BeginRange(sr, sc, er, ec)
+	m.selection.Mode = mode
+}
+
+func (m *Model) extendSelect(mode SelectMode, row, col int) {
+	sr, sc, er, ec := m.rangeForPoint(mode, row, col)
+	m.selection.ExtendRange(sr, sc, er, ec)
+	m.selection.Mode = mode
+}
+
+// clickCountAt returns 1, 2 or 3 for single, double and triple clicks at the
+// same spot within the double-click interval.
+func (m *Model) clickCountAt(row, col int) int {
+	now := time.Now()
+	if row == m.lastClickRow && col == m.lastClickCol && now.Sub(m.lastClickTime) < 500*time.Millisecond {
+		m.clickCount++
+		if m.clickCount > 3 {
+			m.clickCount = 1
+		}
+	} else {
+		m.clickCount = 1
+	}
+	m.lastClickRow, m.lastClickCol, m.lastClickTime = row, col, now
+	return m.clickCount
 }
 
 func (m Model) contentHeight() int {

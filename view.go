@@ -180,6 +180,11 @@ func applyLineSelection(styled string, lineNum, sr, sc, er, ec int) string {
 }
 
 func expandTabs(s string, tabWidth int) string {
+	// Only tabs are rewritten, so a line without them is already expanded and
+	// needs none of the grapheme walking below.
+	if strings.IndexByte(s, '\t') < 0 {
+		return s
+	}
 	var b strings.Builder
 	col := 0
 	i := 0
