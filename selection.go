@@ -17,7 +17,7 @@ func (s *Selection) Begin(row, col int) {
 	s.EndCol = col
 	s.Selecting = true
 	s.Active = false
-	s.anchorIsStart = false
+	s.anchorIsStart = true
 }
 
 func (s *Selection) Extend(row, col int) {
@@ -35,15 +35,12 @@ func (s *Selection) Extend(row, col int) {
 		s.Begin(row, col)
 		return
 	}
-	sr, sc, _, _ := s.Bounds()
-	if row < sr || (row == sr && col < sc) {
-		s.StartRow = row
-		s.StartCol = col
-		s.anchorIsStart = true
-	} else {
+	if s.anchorIsStart {
 		s.EndRow = row
 		s.EndCol = col
-		s.anchorIsStart = false
+	} else {
+		s.StartRow = row
+		s.StartCol = col
 	}
 	s.Selecting = true
 }

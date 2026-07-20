@@ -384,12 +384,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		contentCol := col + m.xOffset
 
 		if mouse.Button == tea.MouseRight {
-			if !m.selection.Active && !m.selection.Selecting {
-				m.selection.Begin(contentRow, contentCol)
-			} else {
+			if m.selection.Active || m.selection.Selecting {
 				m.selection.Extend(contentRow, contentCol)
+				m.selection.End()
+			} else {
+				m.selection.Begin(contentRow, contentCol)
+				m.selection.End()
+				m.selection.Active = true
 			}
-			m.selection.End()
 			return m, nil
 		}
 
