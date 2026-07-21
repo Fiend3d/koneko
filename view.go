@@ -53,7 +53,7 @@ func (m Model) View() tea.View {
 	}
 
 	var b strings.Builder
-	for row := 0; row < contentH; row++ {
+	for row := range contentH {
 		var lineContent string
 		lineWidth := 0
 
@@ -75,12 +75,12 @@ func (m Model) View() tea.View {
 				}
 			}
 
-		if !cached {
-			styled = strings.ReplaceAll(lines[row], "\r", "")
-			styled = expandTabs(styled, m.tabWidth)
-			lineWidth = ansi.StringWidth(styled)
-			styled = styleBackground.Render(styled)
-		}
+			if !cached {
+				styled = strings.ReplaceAll(lines[row], "\r", "")
+				styled = expandTabs(styled, m.tabWidth)
+				lineWidth = ansi.StringWidth(styled)
+				styled = styleBackground.Render(styled)
+			}
 
 			inSelection := false
 			if m.selection.Active || m.selection.Selecting {

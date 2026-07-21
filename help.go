@@ -110,7 +110,7 @@ func renderHelp(m Model) string {
 	bg := styleBackground
 
 	var b strings.Builder
-	for row := 0; row < contentH; row++ {
+	for row := range contentH {
 		if row > 0 {
 			b.WriteByte('\n')
 		}
