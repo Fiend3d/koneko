@@ -202,3 +202,113 @@ func TestSelectAllCoversTheWholeFile(t *testing.T) {
 		t.Errorf("select-all text did not round-trip\ngot  %q\nwant %q", got, want)
 	}
 }
+
+// tamilRow finds a line of the corpus that mixes one- and two-column clusters,
+// which is what makes Tamil the case that exposed the rounding: a consonant
+// plus a spacing vowel sign is a single two-column cluster sitting between
+// one-column ones.
+func mixedWidthRow(t *testing.T, a *App) int {
+	t.Helper()
+	for n := 0; n < a.TotalLines; n++ {
+		_, tab := a.LineTable(n)
+		var narrow, wide int
+		for _, c := range tab.Clusters() {
+			switch c.Width {
+			case 1:
+				narrow++
+			case 2:
+				wide++
+			}
+		}
+		if narrow > 2 && wide > 2 {
+			return n
+		}
+	}
+	t.Skip("no line mixing one- and two-column clusters in the corpus")
+	return -1
+}
+
+// drag drives a press, a move and a release across one row, in screen columns.
+func drag(a *App, row int, fromX, toX uint16) {
+	l := a.Layout()
+	y := uint16(row - a.YOff)
+	a.Apply(Action{Kind: ActMouseDown, X: l.ContentX + fromX, Y: y, Button: MouseLeft})
+	a.Apply(Action{Kind: ActMouseDrag, X: l.ContentX + toX, Y: y, Button: MouseLeft})
+	a.Apply(Action{Kind: ActMouseUp, X: l.ContentX + toX, Y: y, Button: MouseLeft})
+}
+
+// TestADragPaintsExactlyWhatItCopies is the invariant the two consumers of a
+// selection column used to break. The renderer paints a cluster when its start
+// column falls inside the range, rounding both ends up; SelectedText converts
+// through ColToByte, rounding both ends down. Unless the endpoints are cluster
+// boundaries the two cover different text, which on a line of Tamil is most
+// drags.
+func TestADragPaintsExactlyWhatItCopies(t *testing.T) {
+	a := testApp(t, "testdata/unicode.txt", 80, 24)
+	row := mixedWidthRow(t, a)
+	width := a.LineWidth(row)
+
+	for from := uint16(0); from < uint16(width); from++ {
+		for to := from + 1; to <= uint16(width); to++ {
+			a.Sel.Clear()
+			drag(a, row, from, to)
+
+			painted := Col(0)
+			line, tab := a.LineTable(row)
+			selFrom, selTo, ok := a.Sel.RowSpan(row, tab.Width())
+			if ok {
+				for _, p := range piecesSel(line, 0, uint16(a.Width), selFrom, selTo, true) {
+					if p.style.GetBg() == theme.Palette.SelBg {
+						painted += DisplayWidth(p.text, a.TabWidth)
+					}
+				}
+			}
+
+			copied := DisplayWidth(a.SelectedText(), a.TabWidth)
+			if painted != copied {
+				t.Fatalf("drag %d->%d on line %d: painted %d columns, copied %d (%q)",
+					from, to, row, painted, copied, a.SelectedText())
+			}
+		}
+	}
+}
+
+// TestTwoClicksOnOneWideGlyphAreADoubleClick covers the other half of the same
+// gap: the click counter keys off the column, so before the endpoints were
+// snapped, clicking the two halves of one glyph looked like two different spots
+// and word select never fired.
+func TestTwoClicksOnOneWideGlyphAreADoubleClick(t *testing.T) {
+	a := testApp(t, "testdata/unicode.txt", 80, 24)
+
+	// A line whose first cluster is two columns wide and part of a word.
+	row := -1
+	for n := 0; n < a.TotalLines; n++ {
+		line, tab := a.LineTable(n)
+		cs := tab.Clusters()
+		if len(cs) > 2 && cs[0].Width == 2 && isWordCluster(tab.ClusterStr(line, 0)) {
+			row = n
+			break
+		}
+	}
+	if row < 0 {
+		t.Skip("no line starting with a wide word cluster")
+	}
+
+	l := a.Layout()
+	y := uint16(row - a.YOff)
+	// Left half, then right half, of the same glyph.
+	a.Apply(Action{Kind: ActMouseDown, X: l.ContentX, Y: y, Button: MouseLeft})
+	a.Apply(Action{Kind: ActMouseUp, X: l.ContentX, Y: y, Button: MouseLeft})
+	a.Apply(Action{Kind: ActMouseDown, X: l.ContentX + 1, Y: y, Button: MouseLeft})
+	a.Apply(Action{Kind: ActMouseUp, X: l.ContentX + 1, Y: y, Button: MouseLeft})
+
+	if a.Sel.Mode != SelectWord {
+		t.Fatalf("select mode = %v, want SelectWord", a.Sel.Mode)
+	}
+	line, tab := a.LineTable(row)
+	wantStart, wantEnd := FindWordBounds(line, tab, 0)
+	if a.Sel.Start.Col != wantStart || a.Sel.End.Col != wantEnd {
+		t.Errorf("selected columns %d..%d, want the word at %d..%d",
+			a.Sel.Start.Col, a.Sel.End.Col, wantStart, wantEnd)
+	}
+}

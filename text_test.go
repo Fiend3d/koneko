@@ -68,11 +68,15 @@ func TestZWJFamilyIsASingleCluster(t *testing.T) {
 // uniseg, so our columns and the renderer's agree either way, and what the
 // render path needs is that every mark stays attached to its base and the
 // columns are contiguous. Both hold.
+//
+// Each of the three is one column, not the two uniseg scores हि and दी: a
+// cluster is drawn as one glyph and takes its base character's advance. See
+// TestIndicSpacingMarksDoNotClaimAColumn.
 func TestDevanagariConjunctsKeepTheirMarks(t *testing.T) {
 	line := "हिन्दी"
 	tab := tableFor(line, 4)
-	if tab.Width() != 5 {
-		t.Fatalf("width %d, want 5", tab.Width())
+	if tab.Width() != 3 {
+		t.Fatalf("width %d, want 3", tab.Width())
 	}
 	// No cluster may begin with a combining mark: a mark that started its own
 	// cluster would be one the base character had lost.
@@ -94,6 +98,53 @@ func TestDevanagariConjunctsKeepTheirMarks(t *testing.T) {
 	}
 	if expected != tab.Width() {
 		t.Fatalf("columns end at %d, width is %d", expected, tab.Width())
+	}
+}
+
+// TestIndicSpacingMarksDoNotClaimAColumn is the rule that keeps Indic text from
+// being drawn full of holes.
+//
+// A spacing combining mark is scored one column by Unicode, so uniseg measures
+// a consonant carrying one as two. A terminal draws the pair as a single glyph
+// in a single cell, and the column left over shows up as a gap beside every
+// such consonant — and, since nothing is drawn there, as a hole in any
+// selection painted across the line. catatui caps a cluster at its widest rune,
+// which is what this measures with.
+func TestIndicSpacingMarksDoNotClaimAColumn(t *testing.T) {
+	for _, c := range []struct {
+		text string
+		want Col
+	}{
+		{"हि", 1}, // Devanagari, spacing vowel sign I
+		{"पा", 1}, // Devanagari, spacing vowel sign AA
+		{"न्", 1}, // Devanagari, virama: already zero-width to uniseg
+		{"मि", 1}, // Tamil
+		{"সো", 1}, // Bengali
+		{"हिन्दी", 3},
+		{"தமிழ்", 3},
+	} {
+		if got := tableFor(c.text, 4).Width(); got != c.want {
+			t.Errorf("%q width = %d, want %d", c.text, got, c.want)
+		}
+	}
+
+	// The cap must not touch anything whose width really is its own.
+	for _, c := range []struct {
+		text string
+		want Col
+	}{
+		{"日本語", 6},
+		{"한글", 4},
+		{"ｱｲｳ", 3},
+		{"アイウ", 6},
+		{"ﾊﾞ", 2}, // halfwidth katakana plus a sound mark, drawn in two columns
+		{"👨‍👩‍👧‍👦", 2},
+		{"🏳️‍🌈", 2},
+		{"á", 1},
+	} {
+		if got := tableFor(c.text, 4).Width(); got != c.want {
+			t.Errorf("%q width = %d, want %d", c.text, got, c.want)
+		}
 	}
 }
 
@@ -147,6 +198,62 @@ func TestColToByteRoundsDownInsideAWideCluster(t *testing.T) {
 	}
 	if got := tab.ColToByte(2); got != 3 {
 		t.Errorf("ColToByte(2) = %d, want 3", got)
+	}
+}
+
+// TestSnapColRoundsToTheNearestClusterBoundary covers the conversion mouse
+// selection depends on. In "a日b" the middle cluster is two columns wide, so
+// columns 1 and 2 both land inside one glyph and only one of them is a place a
+// selection edge may sit.
+func TestSnapColRoundsToTheNearestClusterBoundary(t *testing.T) {
+	const line = "a日b"
+	tab := tableFor(line, 4)
+	if tab.Width() != 4 || len(tab.Clusters()) != 3 {
+		t.Fatalf("width %d over %d clusters, want 4 over 3", tab.Width(), len(tab.Clusters()))
+	}
+
+	for _, c := range []struct{ col, want Col }{
+		{0, 0}, // on a boundary already
+		{1, 1}, // start of 日
+		{2, 3}, // inside 日, past its midpoint, so out to its end
+		{3, 3}, // start of b
+	} {
+		if got := tab.SnapCol(c.col); got != c.want {
+			t.Errorf("SnapCol(%d) = %d, want %d", c.col, got, c.want)
+		}
+	}
+
+	// Past the end the column is left alone: the cell one past the text stands
+	// for the newline a selection may include.
+	for _, col := range []Col{4, 5, 20} {
+		if got := tab.SnapCol(col); got != col {
+			t.Errorf("SnapCol(%d) = %d, want it unchanged", col, got)
+		}
+	}
+}
+
+// TestSnapColIsTheIdentityOnIndicText is the other side of the width policy:
+// once a consonant and its spacing vowel sign share one column there is nothing
+// left inside a Tamil or Devanagari glyph for a selection edge to land in.
+func TestSnapColIsTheIdentityOnIndicText(t *testing.T) {
+	for _, line := range []string{"தமிழ் சோதனை", "हिन्दी परीक्षण"} {
+		tab := tableFor(line, 4)
+		for col := Col(0); col <= tab.Width(); col++ {
+			if got := tab.SnapCol(col); got != col {
+				t.Errorf("%q: SnapCol(%d) = %d, want %d", line, col, got, col)
+			}
+		}
+	}
+}
+
+// TestSnapColIsTheIdentityOnASCII keeps the fast path honest: every cluster is
+// one column, so every column is already a boundary.
+func TestSnapColIsTheIdentityOnASCII(t *testing.T) {
+	tab := tableFor("hello world", 4)
+	for col := Col(0); col <= tab.Width(); col++ {
+		if got := tab.SnapCol(col); got != col {
+			t.Errorf("SnapCol(%d) = %d, want %d", col, got, col)
+		}
 	}
 }
 

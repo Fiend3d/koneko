@@ -5,14 +5,19 @@
 // uniseg.StringWidth, runewidth.RuneWidth per rune rather than per cluster, and
 // lipgloss.Width) that disagreed on ZWJ sequences and emoji presentation
 // selectors, and it freely mixed byte offsets with display columns. Everything
-// here goes through one pass of uniseg's grapheme stepper, which is what
-// catatui.StringWidth measures with, so our widths and the renderer's can never
-// disagree.
+// here goes through one pass of uniseg's grapheme stepper and hands each
+// cluster to catatui.GraphemeWidth, the same function the Buffer measures with,
+// so our widths and the renderer's can never disagree. Taking uniseg's own
+// width here instead would be close enough to look right and wrong in two
+// places: catatui gives the halfwidth katakana sound marks a column back, and
+// caps a cluster at its widest rune so that Indic spacing vowel signs do not
+// each claim one.
 package main
 
 import (
 	"unicode"
 
+	"github.com/Fiend3d/catatui"
 	"github.com/rivo/uniseg"
 )
 
@@ -82,7 +87,7 @@ func (t *ClusterTable) Rebuild(line string, tabWidth int) {
 		var cluster string
 		var w int
 		cluster, rest, w, state = uniseg.FirstGraphemeClusterInString(rest, state)
-		width := int32(w)
+		width := int32(catatui.GraphemeWidth(cluster, w))
 		if cluster == "\t" {
 			width = tab - (col % tab)
 		}
@@ -124,7 +129,8 @@ func (t *ClusterTable) IndexAtCol(col Col) (int, bool) {
 	}
 	// Clusters are sorted by column. Zero-width clusters share a column with
 	// whatever follows them, so the partition point lands after that run and
-	// stepping back picks the first cluster starting at or before col.
+	// stepping back picks the last cluster starting at or before col — which is
+	// the one actually covering it.
 	i := partitionPoint(len(t.clusters), func(k int) bool {
 		return Col(t.clusters[k].Col) <= col
 	})
@@ -161,6 +167,42 @@ func (t *ClusterTable) ByteToCol(b int) Col {
 		return 0
 	}
 	return Col(t.clusters[i-1].Col)
+}
+
+// SnapCol rounds col to the nearest grapheme-cluster boundary, so a column
+// taken from a mouse position never lands inside a glyph.
+//
+// Selection endpoints have to be boundaries or the two consumers of a column
+// disagree: the renderer paints a cluster when its start column falls inside
+// the range, which rounds both ends up, while the copy path converts through
+// ColToByte, which rounds both ends down. On a line of Tamil, where a consonant
+// plus a spacing vowel sign is one two-column cluster, that put the highlight a
+// cluster away from the mouse and copied a different range than it painted.
+//
+// Ties round outward, so a column exactly on a two-cell glyph's midpoint moves
+// to its end. Columns at or past the end of the line come back unchanged: the
+// cell one past the text stands for the newline a selection may include, and a
+// drag beyond it has to stay beyond it.
+func (t *ClusterTable) SnapCol(col Col) Col {
+	i, ok := t.IndexAtCol(col)
+	if !ok {
+		return max(col, 0)
+	}
+	c := t.clusters[i]
+	if col-Col(c.Col) >= c.EndCol()-col {
+		return c.EndCol()
+	}
+	return Col(c.Col)
+}
+
+// ClusterStartCol is the first column of the cluster covering col, which is the
+// column identifying the glyph under a mouse position. Past the end of the line
+// col is its own answer.
+func (t *ClusterTable) ClusterStartCol(col Col) Col {
+	if i, ok := t.IndexAtCol(col); ok {
+		return Col(t.clusters[i].Col)
+	}
+	return max(col, 0)
 }
 
 // ClusterStr is the text of cluster idx, sliced from the raw line it was built
@@ -210,7 +252,7 @@ func DisplayWidth(s string, tabWidth int) Col {
 		if cluster == "\t" {
 			col += tab - (col % tab)
 		} else {
-			col += int32(w)
+			col += int32(catatui.GraphemeWidth(cluster, w))
 		}
 	}
 	return Col(col)
@@ -248,10 +290,11 @@ func TruncateToWidth(s string, maxWidth Col) string {
 		var cluster string
 		var w int
 		cluster, rest, w, state = uniseg.FirstGraphemeClusterInString(rest, state)
-		if col+Col(w) > maxWidth {
+		cw := Col(catatui.GraphemeWidth(cluster, w))
+		if col+cw > maxWidth {
 			return s[:byteOff]
 		}
-		col += Col(w)
+		col += cw
 		byteOff += len(cluster)
 	}
 	return s

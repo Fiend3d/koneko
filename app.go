@@ -356,6 +356,27 @@ func (a *App) Apply(act Action) {
 
 // --- Selection helpers -----------------------------------------------------
 
+// snapCol rounds a column taken from a mouse position to the nearest grapheme
+// cluster boundary on the given row, so a selection endpoint is never inside a
+// glyph. See ClusterTable.SnapCol for why that matters.
+func (a *App) snapCol(row int, col Col) Col {
+	// LineTable rebuilds the shared scratch table, so use it and let it go.
+	_, t := a.LineTable(row)
+	return t.SnapCol(col)
+}
+
+// glyphCol identifies the glyph a mouse column landed on, as that cluster's
+// first column.
+//
+// The click counter keys off this rather than off the snapped endpoint: the two
+// halves of one wide glyph are a single spot to whoever clicked it, while
+// snapping sends them to opposite boundaries, so counting those would never
+// register a double click on anything two columns wide.
+func (a *App) glyphCol(row int, col Col) Col {
+	_, t := a.LineTable(row)
+	return t.ClusterStartCol(col)
+}
+
 // rangeForPoint expands a position into the range the given granularity covers:
 // the position itself, the word under it, or the whole line.
 func (a *App) rangeForPoint(mode SelectMode, p Pos) (Pos, Pos) {
@@ -552,7 +573,7 @@ func (a *App) mouseDown(act Action) {
 	if !inGutter && int(act.X) >= int(l.ContentX)+int(l.ContentW) {
 		return
 	}
-	col := a.XOff + Col(int(act.X)-int(l.ContentX))
+	raw := a.XOff + Col(int(act.X)-int(l.ContentX))
 
 	switch act.Button {
 	case MouseLeft:
@@ -562,13 +583,13 @@ func (a *App) mouseDown(act Action) {
 			return
 		}
 		mode := SelectChar
-		switch a.clickCountAt(Pos{row, col}) {
+		switch a.clickCountAt(Pos{row, a.glyphCol(row, raw)}) {
 		case 2:
 			mode = SelectWord
 		case 3:
 			mode = SelectLine
 		}
-		a.beginSelect(mode, Pos{row, col})
+		a.beginSelect(mode, Pos{row, a.snapCol(row, raw)})
 
 	case MouseRight:
 		// Right click extends the existing selection by moving whichever end is
@@ -576,7 +597,7 @@ func (a *App) mouseDown(act Action) {
 		if inGutter {
 			a.extendSelect(SelectLine, Pos{row, 0})
 		} else {
-			a.extendSelect(a.Sel.Mode, Pos{row, col})
+			a.extendSelect(a.Sel.Mode, Pos{row, a.snapCol(row, raw)})
 		}
 		a.Sel.Finish()
 	}
@@ -611,7 +632,7 @@ func (a *App) mouseDrag(act Action) {
 
 	row := max(min(a.YOff+y, a.TotalLines-1), 0)
 	x := max(min(int(act.X)-int(l.ContentX), int(l.ContentW)), 0)
-	a.extendSelect(a.Sel.Mode, Pos{row, a.XOff + Col(x)})
+	a.extendSelect(a.Sel.Mode, Pos{row, a.snapCol(row, a.XOff+Col(x))})
 }
 
 // scrollToRow maps a screen row in the scrollbar track to a scroll offset.

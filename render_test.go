@@ -344,3 +344,73 @@ func atoiOr(s string, fallback int) int {
 	}
 	return n
 }
+
+// TestSelectingIndicTextLeavesNoGaps is the bug this corpus was opened to find:
+// selecting the Hindi block painted a highlight with holes in it, one beside
+// every consonant carrying a spacing vowel sign.
+//
+// The cause was width, not selection. uniseg scores a spacing combining mark a
+// column of its own, so हि measured two columns; the terminal shapes it into
+// one glyph and draws it in one, and the column left over was never painted by
+// anyone. Every cluster of these scripts is one column now, so a selection
+// across one of their lines covers all of it.
+//
+// The corpus does put a stray 。 at the end of two Tamil lines. That one really
+// is two columns and its trailing cell really is unstyled in the buffer, but a
+// terminal paints both columns of a double-width glyph from its leading cell,
+// so nothing shows. Only the column a cluster starts at is checked, which is
+// the column that had the hole.
+func TestSelectingIndicTextLeavesNoGaps(t *testing.T) {
+	a := testApp(t, "testdata/unicode.txt", 80, 24)
+
+	// Devanagari, Bengali, Tamil and Telugu.
+	isIndic := func(r rune) bool {
+		switch {
+		case r >= 0x0900 && r <= 0x097F, // Devanagari
+			r >= 0x0980 && r <= 0x09FF, // Bengali
+			r >= 0x0B80 && r <= 0x0BFF, // Tamil
+			r >= 0x0C00 && r <= 0x0C7F: // Telugu
+			return true
+		}
+		return false
+	}
+
+	var checked int
+	for row := 0; row < a.TotalLines; row++ {
+		line := a.fb.Line(row)
+		if !strings.ContainsFunc(line, isIndic) {
+			continue
+		}
+		// A table of its own: LineTable hands out the App's shared scratch, and
+		// rendering a frame rebuilds it for every line on screen.
+		tab := tableFor(line, a.TabWidth)
+
+		width := tab.Width()
+		a.YOff = max(row-2, 0)
+		a.Sel.Clear()
+		a.Sel.Begin(Pos{row, 0})
+		a.Sel.Extend(Pos{row, width})
+		a.Sel.Finish()
+
+		buf := frame(t, a, 80, 24)
+		l := a.Layout()
+		y := uint16(row - a.YOff)
+
+		for i, c := range tab.Clusters() {
+			text := tab.ClusterStr(line, i)
+			if c.Width > 1 && strings.ContainsFunc(text, isIndic) {
+				t.Errorf("line %d: cluster %q spans %d columns, want 1",
+					row+1, text, c.Width)
+			}
+			cell := buf.CellAt(l.ContentX+uint16(c.Col), y)
+			if cell.GetStyle().GetBg() != theme.Palette.SelBg {
+				t.Fatalf("line %d %q: cluster %q at column %d is not selected",
+					row+1, line, text, c.Col)
+			}
+		}
+		checked++
+	}
+	if checked < 8 {
+		t.Fatalf("only %d Indic lines checked, expected the corpus to have more", checked)
+	}
+}
