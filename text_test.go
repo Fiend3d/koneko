@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/Fiend3d/catatui"
 )
 
 func tableFor(line string, tabWidth int) *ClusterTable {
@@ -53,8 +55,11 @@ func TestZWJFamilyIsASingleCluster(t *testing.T) {
 	if len(tab.Clusters()) != 1 {
 		t.Fatalf("%d clusters, want 1", len(tab.Clusters()))
 	}
-	if tab.Width() != 2 {
-		t.Fatalf("width %d, want 2", tab.Width())
+	// How many columns it takes is the terminal's business, not ours; what
+	// matters here is that the cluster is not broken up. See
+	// TestClusterWidthsAreTheRenderersWidths.
+	if want := Col(catatui.StringWidth("👨‍👩‍👧‍👦")); tab.Width() != want {
+		t.Fatalf("width %d, want %d", tab.Width(), want)
 	}
 }
 
@@ -75,8 +80,8 @@ func TestZWJFamilyIsASingleCluster(t *testing.T) {
 func TestDevanagariConjunctsKeepTheirMarks(t *testing.T) {
 	line := "हिन्दी"
 	tab := tableFor(line, 4)
-	if tab.Width() != 3 {
-		t.Fatalf("width %d, want 3", tab.Width())
+	if want := Col(catatui.StringWidth(line)); tab.Width() != want {
+		t.Fatalf("width %d, want %d", tab.Width(), want)
 	}
 	// No cluster may begin with a combining mark: a mark that started its own
 	// cluster would be one the base character had lost.
@@ -101,57 +106,79 @@ func TestDevanagariConjunctsKeepTheirMarks(t *testing.T) {
 	}
 }
 
-// TestIndicSpacingMarksDoNotClaimAColumn is the rule that keeps Indic text from
-// being drawn full of holes.
+// TestClusterWidthsAreTheRenderersWidths is the rule the Indic scripts turn on.
 //
-// A spacing combining mark is scored one column by Unicode, so uniseg measures
-// a consonant carrying one as two. A terminal draws the pair as a single glyph
-// in a single cell, and the column left over shows up as a gap beside every
-// such consonant — and, since nothing is drawn there, as a hole in any
-// selection painted across the line. catatui caps a cluster at its widest rune,
-// which is what this measures with.
-func TestIndicSpacingMarksDoNotClaimAColumn(t *testing.T) {
-	for _, c := range []struct {
-		text string
-		want Col
-	}{
-		{"हि", 1}, // Devanagari, spacing vowel sign I
-		{"पा", 1}, // Devanagari, spacing vowel sign AA
-		{"न्", 1}, // Devanagari, virama: already zero-width to uniseg
-		{"मि", 1}, // Tamil
-		{"সো", 1}, // Bengali
-		{"हिन्दी", 3},
-		{"தமிழ்", 3},
+// A cluster is as wide as the terminal makes it, which is not the same as the
+// one glyph it is drawn as: a spacing combining mark takes a column of its own,
+// so हि covers two however tightly the pair is drawn. Measuring it as one put
+// the next cluster on top of its second half and the terminal dropped the pair,
+// which is how हिन्दी came out as न्दी. Measuring it long is no better — see
+// catatui's clusterWidth for the other half of that story.
+//
+// The number belongs to catatui, which is what turns clusters into cells, so
+// this pins the agreement rather than the number: every cluster in the table
+// has to measure exactly what the renderer will measure, or the two disagree
+// about where the next glyph goes.
+func TestClusterWidthsAreTheRenderersWidths(t *testing.T) {
+	for _, line := range []string{
+		"हिन्दी परीक्षण पाठ।", // Devanagari
+		"বাংলা পরীক্ষা লেখা।", // Bengali
+		"தமிழ் சோதனை உரை.", // Tamil
+		"తెలుగు పరీక్ష వచనం.", // Telugu
+		"ภาษาไทยทดสอบ", // Thai
+		"العربية اختبار", // Arabic
+		"日本語 한글 ｱｲｳ ﾊﾞ",
+		"👨‍👩‍👧‍👦 🏳️‍🌈 á",
 	} {
-		if got := tableFor(c.text, 4).Width(); got != c.want {
-			t.Errorf("%q width = %d, want %d", c.text, got, c.want)
+		tab := tableFor(line, 4)
+		if got, want := tab.Width(), Col(catatui.StringWidth(line)); got != want {
+			t.Errorf("%q: table width %d, renderer width %d", line, got, want)
+		}
+		var col Col
+		for i, c := range tab.Clusters() {
+			text := tab.ClusterStr(line, i)
+			if Col(c.Col) != col {
+				t.Fatalf("%q: cluster %q starts at column %d, want %d", line, text, c.Col, col)
+			}
+			if got, want := Col(c.Width), Col(catatui.StringWidth(text)); got != want {
+				t.Errorf("%q: cluster %q is %d columns here, %d to the renderer",
+					line, text, got, want)
+			}
+			col = c.EndCol()
 		}
 	}
+}
 
-	// The cap must not touch anything whose width really is its own.
-	for _, c := range []struct {
-		text string
-		want Col
-	}{
-		{"日本語", 6},
-		{"한글", 4},
-		{"ｱｲｳ", 3},
-		{"アイウ", 6},
-		{"ﾊﾞ", 2}, // halfwidth katakana plus a sound mark, drawn in two columns
-		{"👨‍👩‍👧‍👦", 2},
-		{"🏳️‍🌈", 2},
-		{"á", 1},
+// TestIndicClustersCoverEveryColumnTheTerminalAdvances is the same rule stated
+// as the bug it prevents: a cluster the terminal walks two columns for has to
+// claim both, or whatever is drawn next lands inside it.
+func TestIndicClustersCoverEveryColumnTheTerminalAdvances(t *testing.T) {
+	for _, text := range []string{
+		"हि", // Devanagari, spacing vowel sign I
+		"पा", // Devanagari, spacing vowel sign AA
+		"न्", // Devanagari, virama
+		"মি", // Bengali
+		"সো", // Bengali
+		"மி", // Tamil
 	} {
-		if got := tableFor(c.text, 4).Width(); got != c.want {
-			t.Errorf("%q width = %d, want %d", c.text, got, c.want)
+		tab := tableFor(text, 4)
+		if len(tab.Clusters()) != 1 {
+			t.Fatalf("%q split into %d clusters, want 1", text, len(tab.Clusters()))
+		}
+		if got, want := tab.Width(), Col(catatui.StringWidth(text)); got != want {
+			t.Errorf("%q width = %d, want %d", text, got, want)
 		}
 	}
 }
 
 func TestCombiningMarksAttachToTheirBase(t *testing.T) {
-	tab := tableFor("á", 4)
-	if len(tab.Clusters()) != 1 || tab.Width() != 1 {
-		t.Fatalf("width %d, %d clusters", tab.Width(), len(tab.Clusters()))
+	const decomposed = "a\u0301"
+	tab := tableFor(decomposed, 4)
+	if len(tab.Clusters()) != 1 {
+		t.Fatalf("%d clusters, want 1", len(tab.Clusters()))
+	}
+	if want := Col(catatui.StringWidth(decomposed)); tab.Width() != want {
+		t.Fatalf("width %d, want %d", tab.Width(), want)
 	}
 }
 
@@ -232,15 +259,20 @@ func TestSnapColRoundsToTheNearestClusterBoundary(t *testing.T) {
 	}
 }
 
-// TestSnapColIsTheIdentityOnIndicText is the other side of the width policy:
-// once a consonant and its spacing vowel sign share one column there is nothing
-// left inside a Tamil or Devanagari glyph for a selection edge to land in.
-func TestSnapColIsTheIdentityOnIndicText(t *testing.T) {
+// TestSnapColLandsOnAClusterBoundaryInIndicText is the other side of the width
+// policy: a Tamil or Devanagari cluster covers more than one column, so a
+// selection edge really can land inside a glyph, and snapping is what keeps it
+// out. Every column of the line has to round to a boundary.
+func TestSnapColLandsOnAClusterBoundaryInIndicText(t *testing.T) {
 	for _, line := range []string{"தமிழ் சோதனை", "हिन्दी परीक्षण"} {
 		tab := tableFor(line, 4)
+		boundary := map[Col]bool{tab.Width(): true}
+		for _, c := range tab.Clusters() {
+			boundary[Col(c.Col)] = true
+		}
 		for col := Col(0); col <= tab.Width(); col++ {
-			if got := tab.SnapCol(col); got != col {
-				t.Errorf("%q: SnapCol(%d) = %d, want %d", line, col, got, col)
+			if got := tab.SnapCol(col); !boundary[got] {
+				t.Errorf("%q: SnapCol(%d) = %d, which is inside a cluster", line, col, got)
 			}
 		}
 	}

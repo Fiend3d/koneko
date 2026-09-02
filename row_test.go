@@ -208,13 +208,17 @@ func TestSelectionBackgroundContinuesThroughASplitWideChar(t *testing.T) {
 }
 
 func TestSelectionAcrossAZWJFamilyKeepsTheClusterWhole(t *testing.T) {
-	line := "a👨‍👩‍👧‍👦b"
-	out := piecesSel(line, 0, 8, 1, 3, true)
-	if !strings.Contains(textOf(out), "\U0001f468") {
+	const family = "👨‍👩‍👧‍👦"
+	line := "a" + family + "b"
+	// The row is exactly the line: a selection has to be able to cover a
+	// cluster whose width the terminal, not Unicode, decides.
+	width := Col(catatui.StringWidth(line))
+	out := piecesSel(line, 0, uint16(width), 1, width-1, true)
+	if !strings.Contains(textOf(out), "👨") {
 		t.Error("the family did not survive")
 	}
-	if got := renderedWidth(out); got != 8 {
-		t.Errorf("row width %d, want 8", got)
+	if got := renderedWidth(out); got != width {
+		t.Errorf("row width %d, want %d", got, width)
 	}
 }
 

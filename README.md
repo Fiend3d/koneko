@@ -168,11 +168,26 @@ Rust's `unicode-segmentation` gives two. This costs nothing here, because
 catatui measures with the same `uniseg`: our columns and the renderer's agree
 either way, and every combining mark still stays attached to its base.
 
-A terminal may still *paint* a complex cluster at a width neither of them
-predicts — Windows Terminal does, for the Indic and Arabic scripts. koneko stays
-internally exact regardless, because the backend re-anchors the cursor after
-every non-ASCII cell rather than trusting a predicted advance, so a disagreement
-can shift where a glyph sits but can no longer corrupt the rest of the row.
+How wide a cluster is belongs to the terminal, not to Unicode, and koneko takes
+its columns from catatui rather than measuring them again, so the two cannot
+drift. Windows Terminal segments text into grapheme clusters and advances by the
+cluster's unicode width: a spacing combining mark adds a column, a non-spacing
+one adds none, and a sequence held together by joiners counts once. `हि` is two
+columns even though it is drawn as one glyph; `👨‍👩‍👧‍👦` is two even though it
+is seven code points.
+
+Getting that number wrong corrupts the frame in one of two ways, and both were
+seen on the way here. Measure a cluster short and the next cell is written into
+the middle of a glyph the terminal has already laid down, which took every
+consonant carrying a spacing vowel sign off the screen and turned `हिन्दी` into
+`न्दी`. Measure it long and the extra columns are never written at all — a wide
+cell covers its own trailing columns, so the diff skips them — and the previous
+frame's text stays there, which put stray characters beside every combining mark
+and every joined emoji.
+
+The console API is no help in settling it. `GetConsoleScreenBufferInfo` reports
+a width per code point — eleven for that family — even under Windows Terminal,
+whose screen shows two. The terminal's own buffer is what the reader sees.
 
 Syntax highlighting tokenises a window around the visible range rather than the
 whole file, so a block comment opened far above the viewport can be mis-coloured.

@@ -345,22 +345,18 @@ func atoiOr(s string, fallback int) int {
 	return n
 }
 
-// TestSelectingIndicTextLeavesNoGaps is the bug this corpus was opened to find:
-// selecting the Hindi block painted a highlight with holes in it, one beside
-// every consonant carrying a spacing vowel sign.
+// TestSelectingIndicTextSelectsEveryCluster walks the Devanagari, Bengali,
+// Tamil and Telugu blocks of the corpus with the whole line selected, and
+// checks that every cluster is painted.
 //
-// The cause was width, not selection. uniseg scores a spacing combining mark a
-// column of its own, so हि measured two columns; the terminal shapes it into
-// one glyph and draws it in one, and the column left over was never painted by
-// anyone. Every cluster of these scripts is one column now, so a selection
-// across one of their lines covers all of it.
-//
-// The corpus does put a stray 。 at the end of two Tamil lines. That one really
-// is two columns and its trailing cell really is unstyled in the buffer, but a
-// terminal paints both columns of a double-width glyph from its leading cell,
-// so nothing shows. Only the column a cluster starts at is checked, which is
-// the column that had the hole.
-func TestSelectingIndicTextLeavesNoGaps(t *testing.T) {
+// These scripts are where a selection is easiest to get wrong, because their
+// clusters are not one column: a spacing vowel sign takes a column of its own,
+// so a consonant carrying one covers two. Only the column a
+// cluster starts at is checked. The rest are blank in the buffer by design —
+// a wide cluster covers its own trailing columns and the diff never writes
+// them, so the terminal paints them from the leading cell, in the leading
+// cell's colours.
+func TestSelectingIndicTextSelectsEveryCluster(t *testing.T) {
 	a := testApp(t, "testdata/unicode.txt", 80, 24)
 
 	// Devanagari, Bengali, Tamil and Telugu.
@@ -398,14 +394,15 @@ func TestSelectingIndicTextLeavesNoGaps(t *testing.T) {
 
 		for i, c := range tab.Clusters() {
 			text := tab.ClusterStr(line, i)
-			if c.Width > 1 && strings.ContainsFunc(text, isIndic) {
-				t.Errorf("line %d: cluster %q spans %d columns, want 1",
-					row+1, text, c.Width)
-			}
 			cell := buf.CellAt(l.ContentX+uint16(c.Col), y)
 			if cell.GetStyle().GetBg() != theme.Palette.SelBg {
 				t.Fatalf("line %d %q: cluster %q at column %d is not selected",
 					row+1, line, text, c.Col)
+			}
+			// A tab is the one cluster drawn as something else: spaces.
+			if got := cell.GetSymbol(); text != "\t" && got != text {
+				t.Errorf("line %d: column %d holds %q, want the cluster %q",
+					row+1, c.Col, got, text)
 			}
 		}
 		checked++

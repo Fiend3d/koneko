@@ -8,10 +8,11 @@
 // here goes through one pass of uniseg's grapheme stepper and hands each
 // cluster to catatui.GraphemeWidth, the same function the Buffer measures with,
 // so our widths and the renderer's can never disagree. Taking uniseg's own
-// width here instead would be close enough to look right and wrong in two
-// places: catatui gives the halfwidth katakana sound marks a column back, and
-// caps a cluster at its widest rune so that Indic spacing vowel signs do not
-// each claim one.
+// width here instead would be close enough to look right and wrong on the
+// halfwidth katakana sound marks, which catatui gives a column back. What a
+// cluster costs is the terminal's decision, not Unicode's, and catatui is where
+// that decision is made and documented; measuring it a second time here is how
+// the two come to disagree about which column the next glyph starts in.
 package main
 
 import (
