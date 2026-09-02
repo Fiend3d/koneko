@@ -54,6 +54,19 @@ func rowText(buf *catatui.Buffer, y, w uint16) string {
 	return b.String()
 }
 
+// cellsAcross reads back the text drawn over n columns starting at (x, y),
+// stepping by each symbol's own width so that a wide glyph's blank continuation
+// cells are not counted as content.
+func cellsAcross(buf *catatui.Buffer, x, y uint16, n Col) string {
+	var b strings.Builder
+	for i := Col(0); i < n; {
+		sym := buf.CellAt(x+uint16(i), y).GetSymbol()
+		b.WriteString(sym)
+		i += max(Col(catatui.StringWidth(sym)), 1)
+	}
+	return b.String()
+}
+
 // TestEveryCellOfTheFrameIsWritten is the screen-level form of the width
 // invariant. A cell left at its default style means a row did not fill its
 // width — the drift the bubbletea original suffered. catatui drops a wide
@@ -399,10 +412,16 @@ func TestSelectingIndicTextSelectsEveryCluster(t *testing.T) {
 				t.Fatalf("line %d %q: cluster %q at column %d is not selected",
 					row+1, line, text, c.Col)
 			}
-			// A tab is the one cluster drawn as something else: spaces.
-			if got := cell.GetSymbol(); text != "\t" && got != text {
-				t.Errorf("line %d: column %d holds %q, want the cluster %q",
-					row+1, c.Col, got, text)
+			// A tab is the one cluster drawn as something else: spaces. And a
+			// cluster can span several cells — an Indic conjunct is one cluster
+			// here and one cell per piece in the buffer — so the columns it
+			// covers are read back together.
+			if text != "\t" {
+				got := cellsAcross(buf, l.ContentX+uint16(c.Col), y, Col(c.Width))
+				if got != text {
+					t.Errorf("line %d: columns %d..%d hold %q, want the cluster %q",
+						row+1, c.Col, c.EndCol()-1, got, text)
+				}
 			}
 		}
 		checked++

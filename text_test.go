@@ -66,17 +66,12 @@ func TestZWJFamilyIsASingleCluster(t *testing.T) {
 // TestDevanagariConjunctsKeepTheirMarks pins down the shape that breaks naive
 // renderers: six code points that must never be walked per rune or per byte.
 //
-// uniseg segments हिन्दी as three clusters — हि, न्, दी — where Rust's
-// unicode-segmentation gives two, binding न्दी into one unit by the virama.
-// That is Unicode 15.1's rule GB9c, which uniseg v0.4.7 (the newest release)
-// does not yet implement. It costs nothing here: catatui measures with the same
-// uniseg, so our columns and the renderer's agree either way, and what the
-// render path needs is that every mark stays attached to its base and the
-// columns are contiguous. Both hold.
-//
-// Each of the three is one column, not the two uniseg scores हि and दी: a
-// cluster is drawn as one glyph and takes its base character's advance. See
-// TestIndicSpacingMarksDoNotClaimAColumn.
+// uniseg segments हिन्दी as three clusters — हि, न्, दी — where Unicode 15.1's
+// rule GB9c gives two, binding न्दी into one unit by the virama. uniseg v0.4.7,
+// the newest release, does not implement that rule, so the table applies it
+// itself; see conjunct.go for why a half-selected conjunct is a visible bug.
+// What this test cares about either way is that no mark is ever separated from
+// its base and the columns stay contiguous.
 func TestDevanagariConjunctsKeepTheirMarks(t *testing.T) {
 	line := "हिन्दी"
 	tab := tableFor(line, 4)

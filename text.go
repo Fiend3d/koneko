@@ -84,6 +84,7 @@ func (t *ClusterTable) Rebuild(line string, tabWidth int) {
 	state := -1
 	rest := line
 	byteOff := 0
+	prev := ""
 	for len(rest) > 0 {
 		var cluster string
 		var w int
@@ -92,9 +93,18 @@ func (t *ClusterTable) Rebuild(line string, tabWidth int) {
 		if cluster == "\t" {
 			width = tab - (col % tab)
 		}
-		t.clusters = append(t.clusters, Cluster{Byte: int32(byteOff), Col: col, Width: width})
+		// GB9c: an Indic conjunct is one cluster and uniseg hands it over in
+		// pieces, so widen the piece already recorded rather than starting a
+		// new one. A selection edge then cannot land inside the ligature. See
+		// conjunct.go.
+		if joinsConjunct(prev, cluster) {
+			t.clusters[len(t.clusters)-1].Width += width
+		} else {
+			t.clusters = append(t.clusters, Cluster{Byte: int32(byteOff), Col: col, Width: width})
+		}
 		col += width
 		byteOff += len(cluster)
+		prev = cluster
 	}
 
 	t.totalWidth = Col(col)

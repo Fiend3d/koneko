@@ -162,11 +162,22 @@ Bubble Tea version also held the file open for its whole session, so this is not
 a new restriction in practice, but mapping makes the failure mode a fault rather
 than a short read.
 
-`uniseg` v0.4.7 — the newest release — does not implement Unicode 15.1's rule
-GB9c, so an Indic conjunct such as `हिन्दी` segments into three clusters where
-Rust's `unicode-segmentation` gives two. This costs nothing here, because
-catatui measures with the same `uniseg`: our columns and the renderer's agree
-either way, and every combining mark still stays attached to its base.
+`uniseg` v0.4.7 — the newest release — implements the grapheme rules through
+GB9b, so it breaks an Indic conjunct in two: `परीक्षण` comes out as `प री क् ष
+ण` rather than `प री क्ष ण`. That is Unicode 15.1's rule GB9c, and koneko
+applies it over uniseg's segmentation in `conjunct.go`, from the
+`Indic_Conjunct_Break` property. Without it a selection edge could stop inside a
+conjunct: half the ligature was highlighted, and because a terminal groups cells
+by their attributes before shaping them, the two halves were then drawn as
+separate glyphs instead of the conjunct. Telugu and Devanagari are written
+almost entirely in conjuncts, so it is most of the text rather than a corner of
+it. Joining changes no width — the pieces keep the columns they had — so nothing
+downstream of the cluster table moves.
+
+The property covers six scripts: Devanagari, Bengali, Gujarati, Oriya, Telugu
+and Malayalam. Kannada, Tamil, Gurmukhi and Sinhala have viramas of their own
+and are deliberately not in it, so their conjuncts still break like any other
+cluster.
 
 How wide a cluster is belongs to the terminal, not to Unicode, and koneko takes
 its columns from catatui rather than measuring them again, so the two cannot
