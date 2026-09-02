@@ -1,159 +1,149 @@
+// The help overlay.
 package main
 
 import (
 	"fmt"
 	"strings"
 
-	"charm.land/lipgloss/v2"
-	"github.com/alecthomas/chroma/v2"
-	"github.com/charmbracelet/x/ansi"
+	"github.com/Fiend3d/catatui"
 )
 
-var (
-	helpLines   = buildHelpLines()
-	maxKeyWidth int
-)
+const version = "2.0.0"
 
-func buildHelpLines() []string {
-	lines := []string{
-		" Koneko v" + version,
-		"",
-		" NAVIGATION",
-		"   up/k              scroll up 1 line",
-		"   down/j            scroll down 1 line",
-		"   left/right        scroll left/right",
-		"   pgup/pgdn         scroll 1/2 screen",
-		"   home/g            go to top",
-		"   end/G             go to bottom",
-		"   H                 reset horizontal scroll",
-		"",
-		" SELECTION",
-		"   mouse click       set cursor position",
-		"   mouse drag        select text",
-		"   a                 select all",
-		"   d                 deselect",
-		"   y                 copy selection",
-		"   x                 extend selection to full lines",
-		"",
-		" SEARCH",
-		"   /                 enter search mode",
-		"   n                 next match",
-		"   N                 previous match",
-		"   enter             commit search",
-		"   esc               cancel search",
-		"",
-		" DISPLAY",
-		"   l                 toggle line numbers",
-		"   s                 toggle scrollbar",
-		"   h                 toggle syntax highlighting",
-		"",
-		" MOUSE",
-		"   left click        set cursor / start selection",
-		"   left drag         extend selection",
-		"   right click       extend selection to clicked pos",
-		"   left dbl-click    select word (drag by word)",
-		"   left tpl-click    select line (drag by line)",
-		"   wheel             scroll",
-		"   gutter l-click    select whole line",
-		"   gutter r-click    extend selection to line",
-		"   scrollbar drag    jump to position",
-		"",
-		" QUIT",
-		"   q                 quit",
-		"   ctrl+c            quit",
+// helpLines is the overlay's text. A line starting with three spaces is a
+// binding — the key, two or more spaces, then its description — and anything
+// else is a heading.
+var helpLines = []string{
+	" Koneko v" + version,
+	"",
+	" NAVIGATION",
+	"   up/k              scroll up 1 line",
+	"   down/j            scroll down 1 line",
+	"   left/right        scroll left/right",
+	"   pgup/pgdn         scroll 1/2 screen",
+	"   home/g            go to top",
+	"   end/G             go to bottom",
+	"   H                 reset horizontal scroll",
+	"",
+	" SELECTION",
+	"   mouse click       set cursor position",
+	"   mouse drag        select text",
+	"   a                 select all",
+	"   d                 deselect",
+	"   y                 copy selection",
+	"   x                 extend selection to full lines",
+	"",
+	" SEARCH",
+	"   /                 enter search mode",
+	"   n                 next match",
+	"   N                 previous match",
+	"   enter             commit search",
+	"   esc               cancel search",
+	"",
+	" DISPLAY",
+	"   l                 toggle line numbers",
+	"   s                 toggle scrollbar",
+	"   h                 toggle syntax highlighting",
+	"",
+	" MOUSE",
+	"   left click        set cursor / start selection",
+	"   left drag         extend selection",
+	"   right click       extend selection to clicked pos",
+	"   left dbl-click    select word (drag by word)",
+	"   left tpl-click    select line (drag by line)",
+	"   wheel             scroll",
+	"   gutter l-click    select whole line",
+	"   gutter r-click    extend selection to line",
+	"   scrollbar drag    jump to position",
+	"",
+	" QUIT",
+	"   q                 quit",
+	"   ctrl+c            quit",
+}
+
+// maxKeyWidth is the width the key column is padded to, so descriptions line up.
+var maxKeyWidth = computeMaxKeyWidth()
+
+func computeMaxKeyWidth() int {
+	w := 0
+	for _, line := range helpLines {
+		if key, _, ok := splitBinding(line); ok {
+			w = max(w, len(key))
+		}
 	}
-	for _, line := range lines {
-		if strings.HasPrefix(line, "   ") {
-			rest := line[3:]
-			gapStart := strings.Index(rest, "  ")
-			if gapStart > 0 {
-				key := rest[:gapStart]
-				if len(key) > maxKeyWidth {
-					maxKeyWidth = len(key)
-				}
+	return w
+}
+
+// splitBinding pulls the key and description out of a binding line.
+func splitBinding(line string) (key, desc string, ok bool) {
+	if !strings.HasPrefix(line, "   ") {
+		return "", "", false
+	}
+	rest := line[3:]
+	gap := strings.Index(rest, "  ")
+	if gap <= 0 {
+		return "", "", false
+	}
+	return rest[:gap], strings.TrimLeft(rest[gap:], " "), true
+}
+
+func renderHelp(buf *catatui.Buffer, a *App, th *Theme) {
+	l := a.Layout()
+	width := a.Width
+
+	keyStyle := th.Style(SlotYellow)
+	descStyle := th.Style(SlotDimItalic)
+	headStyle := th.Style(SlotGreen)
+	plain := th.Base()
+
+	for row := uint16(0); row < l.ContentH; row++ {
+		idx := a.HelpOff + int(row)
+		if idx < 0 || idx >= len(helpLines) {
+			fill(buf, 0, row, width, th.Background())
+			continue
+		}
+
+		line := helpLines[idx]
+		var x uint16
+		if key, desc, ok := splitBinding(line); ok {
+			x, _ = buf.SetStringn(0, row, "   ", width, plain)
+			x, _ = buf.SetStringn(x, row, key, width-x, keyStyle)
+			if pad := maxKeyWidth - len(key) + 2; pad > 0 && x < width {
+				x, _ = buf.SetStringn(x, row, spaces[:min(pad, len(spaces))], width-x, plain)
 			}
-		}
-	}
-	return lines
-}
-
-func helpLineStyle(line string) string {
-	bg := theme.Background
-	defStyle := lipgloss.NewStyle().Background(bg).Foreground(theme.Foreground)
-	if strings.HasPrefix(line, "   ") {
-		rest := line[3:]
-		gapStart := strings.Index(rest, "  ")
-		if gapStart > 0 {
-			key := rest[:gapStart]
-			desc := strings.TrimLeft(rest[gapStart:], " ")
-			keyStyle := theme.TokenStyles[chroma.LiteralString].Background(bg)
-			descStyle := theme.TokenStyles[chroma.Comment].Background(bg)
-			keyPadded := key + strings.Repeat(" ", maxKeyWidth-len(key))
-			return defStyle.Render("   ") +
-				keyStyle.Render(keyPadded) +
-				descStyle.Render("  "+desc)
-		}
-		return defStyle.Render(line)
-	}
-
-	return theme.TokenStyles[chroma.NameFunction].Background(bg).Render(line)
-}
-
-func renderHelp(m Model) string {
-	contentH := m.contentHeight()
-	from := m.helpOffset
-	to := m.helpOffset + contentH
-	if to > len(helpLines) {
-		to = len(helpLines)
-	}
-
-	bg := styleBackground
-
-	var b strings.Builder
-	for row := range contentH {
-		if row > 0 {
-			b.WriteByte('\n')
-		}
-		absIdx := from + row
-		if absIdx < len(helpLines) {
-			line := helpLines[absIdx]
-			if line == "" {
-				b.WriteString(bg.Render(strings.Repeat(" ", m.width)))
-			} else {
-				styled := helpLineStyle(line)
-				if pad := m.width - ansi.StringWidth(styled); pad > 0 {
-					styled += bg.Render(strings.Repeat(" ", pad))
-				}
-				b.WriteString(styled)
+			if x < width {
+				x, _ = buf.SetStringn(x, row, desc, width-x, descStyle)
 			}
-		} else {
-			b.WriteString(bg.Render(strings.Repeat(" ", m.width)))
+		} else if line != "" {
+			x, _ = buf.SetStringn(0, row, line, width, headStyle)
+		}
+		if x < width {
+			fill(buf, x, row, width-x, th.Background())
 		}
 	}
 
-	b.WriteByte('\n')
-	b.WriteString(renderHelpStatusBar(m, from, to, contentH))
-
-	return b.String()
+	renderHelpBar(buf, a, th, l)
 }
 
-func renderHelpStatusBar(m Model, from, to, contentH int) string {
-	total := len(helpLines)
-	leftText := "HELP"
-	rightText := fmt.Sprintf("%d/%d", to, total)
-	if m.helpOffset > 0 {
-		rightText = fmt.Sprintf("+%d  ", m.helpOffset) + rightText
-	}
+func renderHelpBar(buf *catatui.Buffer, a *App, th *Theme, l Layout) {
+	shown := min(a.HelpOff+int(l.ContentH), len(helpLines))
+	left := " HELP — F1 or esc to close"
+	right := fmt.Sprintf("%d/%d ", shown, len(helpLines))
 
-	mid := m.width - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
-	if mid < 0 {
-		rightText = fmt.Sprintf("%d/%d", to, total)
-		mid = m.width - 2 - ansi.StringWidth(leftText) - ansi.StringWidth(rightText)
+	width := int(a.Width)
+	gap := max(width-int(DisplayWidth(left, 1))-int(DisplayWidth(right, 1)), 0)
+	bar := left
+	for n := gap; n > 0; {
+		take := min(n, len(spaces))
+		bar += spaces[:take]
+		n -= take
 	}
-	if mid < 0 {
-		mid = 0
-	}
+	bar += right
 
-	bar := " " + leftText + strings.Repeat(" ", mid) + rightText + " "
-	return styleStatusBar.Render(bar)
+	writeBar(buf, l.StatusY, TruncateToWidth(bar, Col(width)), a.Width, th.StatusBar())
+}
+
+// helpMaxOffset is the furthest the overlay can scroll.
+func (a *App) helpMaxOffset() int {
+	return max(len(helpLines)-a.ContentHeight(), 0)
 }

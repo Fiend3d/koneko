@@ -5,52 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/charmbracelet/x/ansi"
 )
-
-// expandTabsSlow and visualLineWidthSlow are the original grapheme-walking
-// implementations, kept here to check the fast paths against.
-func expandTabsSlow(s string, tabWidth int) string {
-	var b strings.Builder
-	col := 0
-	i := 0
-	for i < len(s) {
-		if s[i] == '\t' {
-			n := tabWidth - (col % tabWidth)
-			b.WriteString(strings.Repeat(" ", n))
-			col += n
-			i++
-			continue
-		}
-		cluster, w := ansi.FirstGraphemeCluster(s[i:], ansi.GraphemeWidth)
-		if len(cluster) == 0 {
-			break
-		}
-		b.WriteString(cluster)
-		col += w
-		i += len(cluster)
-	}
-	return b.String()
-}
-
-func visualLineWidthSlow(line string, tabWidth int) int {
-	col := 0
-	rest := line
-	for len(rest) > 0 {
-		cluster, w := ansi.FirstGraphemeCluster(rest, ansi.GraphemeWidth)
-		if len(cluster) == 0 {
-			break
-		}
-		if cluster == "\t" {
-			col += tabWidth - (col % tabWidth)
-		} else {
-			col += w
-		}
-		rest = rest[len(cluster):]
-	}
-	return col
-}
 
 // referenceLines is the obvious, slow way to split a file into lines, used to
 // check the offset table the buffer builds while indexing.
@@ -97,11 +52,7 @@ func TestFileBufferMatchesReference(t *testing.T) {
 				t.Fatalf("LineCount = %d, want %d", got, len(want))
 			}
 			for i := range want {
-				got, err := fb.Line(i)
-				if err != nil {
-					t.Fatalf("Line(%d): %v", i, err)
-				}
-				if got != want[i] {
+				if got := fb.Line(i); got != want[i] {
 					t.Fatalf("Line(%d) = %q, want %q", i, got, want[i])
 				}
 			}
@@ -109,9 +60,23 @@ func TestFileBufferMatchesReference(t *testing.T) {
 	}
 }
 
-// TestLinesRangeMatchesLine covers the range reads that copying a selection now
-// relies on instead of reading the whole file.
-func TestLinesRangeMatchesLine(t *testing.T) {
+func TestLineOutOfRangeIsEmpty(t *testing.T) {
+	fb, err := OpenFileBuffer("testdata/small.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fb.Close()
+	for _, n := range []int{-1, fb.LineCount(), fb.LineCount() + 10} {
+		if got := fb.Line(n); got != "" {
+			t.Errorf("Line(%d) = %q, want empty", n, got)
+		}
+	}
+}
+
+// TestTextKeepsLinesAlignedWithLine is what lets the highlighter record runs
+// against raw line bytes: a byte offset into Text must name the same character
+// as the same offset into the corresponding Line.
+func TestTextKeepsLinesAlignedWithLine(t *testing.T) {
 	for _, path := range testdataFiles(t) {
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			fb, err := OpenFileBuffer(path)
@@ -119,75 +84,68 @@ func TestLinesRangeMatchesLine(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer fb.Close()
-			n := fb.LineCount()
-			if n == 0 {
-				return
+			if fb.LineCount() == 0 {
+				t.Skip("empty file")
 			}
-			ranges := [][2]int{
-				{0, 1}, {0, n}, {n - 1, n},
-			}
-			if n > 10 {
-				ranges = append(ranges, [2]int{3, 9}, [2]int{n / 2, n/2 + 5}, [2]int{n - 4, n})
-			}
-			for _, r := range ranges {
-				lines, err := fb.Lines(r[0], r[1])
-				if err != nil {
-					t.Fatalf("Lines%v: %v", r, err)
+			to := min(fb.LineCount(), 200)
+			got := strings.Split(fb.Text(0, to), "\n")
+			for i := 0; i < to; i++ {
+				if i >= len(got) {
+					t.Fatalf("Text produced %d lines, want at least %d", len(got), to)
 				}
-				if len(lines) != r[1]-r[0] {
-					t.Fatalf("Lines%v returned %d lines, want %d", r, len(lines), r[1]-r[0])
-				}
-				for i, got := range lines {
-					want, err := fb.Line(r[0] + i)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if got != want {
-						t.Fatalf("Lines%v[%d] = %q, want %q", r, i, got, want)
-					}
+				if got[i] != fb.Line(i) {
+					t.Fatalf("line %d: Text has %q, Line has %q", i, got[i], fb.Line(i))
 				}
 			}
 		})
 	}
 }
 
-func TestIndexFoldMatchesToLower(t *testing.T) {
-	cases := []struct{ hay, needle string }{
-		{"Hello World", "world"},
-		{"HELLO", "hello"},
-		{"hello", "hello"},
-		{"aaaa", "aa"},
-		{"abc", "abcd"},
-		{"", "x"},
-		{"sqlite3_MALLOC(n)", "sqlite3_malloc"},
-		{"no match here", "zzz"},
-		{"MiXeD CaSe StRiNg", "case"},
-		{"tail", "l"},
+func TestAnEmptyFileHasNoLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.txt")
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
 	}
-	for _, c := range cases {
-		want := strings.Index(strings.ToLower(c.hay), c.needle)
-		if got := indexFold(c.hay, c.needle); got != want {
-			t.Errorf("indexFold(%q, %q) = %d, want %d", c.hay, c.needle, got, want)
-		}
+	fb, err := OpenFileBuffer(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fb.Close()
+	if got := fb.LineCount(); got != 0 {
+		t.Errorf("LineCount = %d, want 0", got)
+	}
+	if got := fb.Text(0, 1); got != "" {
+		t.Errorf("Text = %q, want empty", got)
 	}
 }
 
-func TestExpandTabsFastPath(t *testing.T) {
-	cases := []string{"", "no tabs here", "\tleading", "a\tb\tc", "unicode → ok", "мир", "tab\tand →"}
-	for _, s := range cases {
-		if got, want := expandTabs(s, 4), expandTabsSlow(s, 4); got != want {
-			t.Errorf("expandTabs(%q) = %q, want %q", s, got, want)
-		}
+func TestAFileWithNoTrailingNewlineKeepsItsLastLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nolf.txt")
+	if err := os.WriteFile(path, []byte("a\nb\nc"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fb, err := OpenFileBuffer(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fb.Close()
+	if got := fb.LineCount(); got != 3 {
+		t.Fatalf("LineCount = %d, want 3", got)
+	}
+	if got := fb.Line(2); got != "c" {
+		t.Errorf("Line(2) = %q, want %q", got, "c")
 	}
 }
 
-func TestAsciiWidthMatchesFullPath(t *testing.T) {
-	cases := []string{"", "plain ascii", "a\tb", "\t\t", "wide→arrow", "日本語", "é"}
-	for _, s := range cases {
-		got := visualLineWidth(s, 4)
-		want := visualLineWidthSlow(s, 4)
-		if got != want {
-			t.Errorf("visualLineWidth(%q) = %d, want %d", s, got, want)
+func TestCRLFEndingsAreStripped(t *testing.T) {
+	fb, err := OpenFileBuffer("testdata/crlf.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fb.Close()
+	for i := 0; i < fb.LineCount(); i++ {
+		if strings.ContainsAny(fb.Line(i), "\r\n") {
+			t.Fatalf("Line(%d) = %q still has a terminator", i, fb.Line(i))
 		}
 	}
 }

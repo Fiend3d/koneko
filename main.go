@@ -1,3 +1,7 @@
+// Koneko is a terminal file viewer: less or bat with mouse-driven text
+// selection, clipboard copy, search and syntax highlighting.
+//
+// Press F1 inside the viewer for the full key list.
 package main
 
 import (
@@ -7,19 +11,142 @@ import (
 	"strconv"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
+	"github.com/Fiend3d/catatui"
+	"github.com/Fiend3d/catatui/term"
 )
 
-const version = "1.0.0"
+// Options is the command line, parsed.
+type Options struct {
+	TabWidth    int
+	LineNumbers bool
+	Scrollbar   bool
+	Highlight   bool
+	Search      string
+	Select      string
+	Theme       string
+	File        string
+}
 
 func main() {
-	tabWidth := flag.Int("tab-width", 4, "tab display width")
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "koneko:", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	opts, ok := parseFlags()
+	if !ok {
+		os.Exit(1)
+	}
+	setTheme(opts.Theme)
+
+	fb, err := OpenFileBuffer(opts.File)
+	if err != nil {
+		return err
+	}
+	defer fb.Close()
+
+	app := NewApp(fb, opts)
+
+	// RecoverAndRestore puts the terminal back if anything below panics, so a
+	// crash leaves a usable shell and a readable stack trace.
+	defer term.RecoverAndRestore()
+
+	terminal, restore, err := term.Init(term.WithMouse())
+	if err != nil {
+		return err
+	}
+	defer restore()
+
+	events := term.NewEventReader(os.Stdin, os.Stdout)
+	defer events.Close()
+
+	// Highlight results arrive asynchronously; the buffered channel keeps the
+	// worker from blocking on a send while the main loop is busy drawing. The
+	// worker starts even under -no-highlight so that toggling highlighting on
+	// with `h` works — it costs one idle goroutine and does nothing until a
+	// request arrives.
+	hlResults := make(chan HlResult, 4)
+	h := NewHighlighter(opts.File, hlResults)
+	defer h.Close()
+	app.AttachHighlighter(h)
+
+	if size, err := terminal.Size(); err == nil {
+		app.Apply(Action{Kind: ActResize, X: size.Width, Y: size.Height})
+	}
+	applyInitialSelection(app, opts)
+	app.RequestHighlight()
+
+	for !app.Quit {
+		if err := terminal.Draw(func(f *catatui.Frame) { draw(f, app) }); err != nil {
+			return err
+		}
+
+		// Block until something happens. An idle viewer costs no CPU at all.
+		select {
+		case ev, open := <-events.Events():
+			if !open {
+				return events.Err()
+			}
+			app.Apply(Decode(ev, app.Mode))
+		case r := <-hlResults:
+			app.InstallHighlight(r)
+		}
+
+		// Drain whatever else is already queued before drawing again. A fast
+		// wheel spin or a mouse drag produces dozens of events, and collapsing
+		// them into one frame is what keeps the UI immediate — the bubbletea
+		// original rendered once per message.
+		for draining := true; draining && !app.Quit; {
+			select {
+			case ev, open := <-events.Events():
+				if !open {
+					app.Quit = true
+				} else {
+					app.Apply(Decode(ev, app.Mode))
+				}
+			case r := <-hlResults:
+				app.InstallHighlight(r)
+			default:
+				draining = false
+			}
+		}
+
+		app.RequestHighlight()
+	}
+	return events.Err()
+}
+
+// draw renders one frame. Help is a full-screen overlay, so it replaces the
+// viewer entirely rather than drawing on top of it.
+func draw(f *catatui.Frame, app *App) {
+	area := f.Area()
+	app.Width, app.Height = area.Width, area.Height
+
+	buf := f.Buffer()
+	if app.Mode == ModeHelp {
+		renderHelp(buf, app, theme)
+		return
+	}
+	renderViewer(buf, app, theme)
+	renderStatus(buf, app, theme)
+
+	if x, y, ok := promptCursor(app); ok {
+		f.SetCursor(x, y)
+	}
+}
+
+func parseFlags() (Options, bool) {
+	var o Options
+	flag.IntVar(&o.TabWidth, "tab-width", 4, "tab display width")
 	noLineNumbers := flag.Bool("no-line-numbers", false, "hide line numbers")
 	noScrollbar := flag.Bool("no-scrollbar", false, "hide scrollbar")
 	noHighlight := flag.Bool("no-highlight", false, "disable syntax highlighting")
-	searchStr := flag.String("search", "", "search string")
-	selectRange := flag.String("select", "", "selection range (e.g. 1:7-1:10)")
-	themeName := flag.String("theme", "dracula", "color theme (autumn, base16, dracula, ferra, github, monokai, nord, tokyonight)")
+	flag.StringVar(&o.Search, "search", "", "search string")
+	flag.StringVar(&o.Select, "select", "", "selection range (e.g. 1:7-1:10)")
+	flag.StringVar(&o.Theme, "theme", defaultTheme,
+		"color theme ("+strings.Join(ThemeNames, ", ")+")")
 	var showVersion bool
 	flag.BoolVar(&showVersion, "v", false, "show version")
 	flag.BoolVar(&showVersion, "version", false, "show version")
@@ -30,60 +157,61 @@ func main() {
 		os.Exit(0)
 	}
 
-	setTheme(*themeName)
+	o.LineNumbers = !*noLineNumbers
+	o.Scrollbar = !*noScrollbar
+	o.Highlight = !*noHighlight
 
 	if flag.NArg() < 1 {
-		fmt.Fprintf(os.Stderr, "Usage: koneko [-tab-width=N] [-no-line-numbers] [-no-scrollbar] [-no-highlight] [-search=STRING] [-select=LINE:CHAR-LINE:CHAR] [-theme=NAME] <file>\n")
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "Usage: koneko [options] <file>\n\n")
+		flag.PrintDefaults()
+		return o, false
 	}
-	if *searchStr != "" && *selectRange != "" {
-		fmt.Fprintf(os.Stderr, "error: -search and -select cannot be used together\n")
-		os.Exit(1)
+	if o.Search != "" && o.Select != "" {
+		fmt.Fprintln(os.Stderr, "error: -search and -select cannot be used together")
+		return o, false
 	}
-	filePath := flag.Arg(0)
+	o.File = flag.Arg(0)
+	return o, true
+}
 
-	sr, sc, er, ec, hasSel := parseSelectRange(*selectRange)
-
-	p := tea.NewProgram(initialModel(filePath, *tabWidth, !*noLineNumbers, !*noScrollbar, !*noHighlight, *searchStr, hasSel, sr, sc, er, ec))
-
-	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+// applyInitialSelection acts on -select and -search, which give a script a way
+// to open the file with something already highlighted.
+func applyInitialSelection(app *App, opts Options) {
+	if opts.Select != "" {
+		if sel, ok := parseSelectRange(opts.Select); ok {
+			app.SelectRange(sel[0], sel[1], sel[2], sel[3])
+		}
+		return
+	}
+	if opts.Search != "" {
+		app.Needle = opts.Search
+		app.runSearch()
 	}
 }
 
-func parseSelectRange(s string) (sr, sc, er, ec int, ok bool) {
-	if s == "" {
-		return
+// parseSelectRange reads LINE:CHAR-LINE:CHAR, one-based, and returns zero-based
+// values. CHAR counts grapheme clusters, so a caller does not need to know the
+// file's encoding to point at the third character of a line.
+func parseSelectRange(s string) ([4]int, bool) {
+	var out [4]int
+	start, end, ok := strings.Cut(s, "-")
+	if !ok {
+		fmt.Fprintf(os.Stderr, "invalid -select %q (expected LINE:CHAR-LINE:CHAR)\n", s)
+		return out, false
 	}
-	parts := strings.SplitN(s, "-", 2)
-	if len(parts) != 2 {
-		fmt.Fprintf(os.Stderr, "invalid -select format %q (expected LINE:CHAR-LINE:CHAR)\n", s)
-		return
+	for i, part := range [2]string{start, end} {
+		lineStr, charStr, ok := strings.Cut(part, ":")
+		if !ok {
+			fmt.Fprintf(os.Stderr, "invalid -select %q (expected LINE:CHAR-LINE:CHAR)\n", s)
+			return out, false
+		}
+		line, err1 := strconv.Atoi(lineStr)
+		char, err2 := strconv.Atoi(charStr)
+		if err1 != nil || err2 != nil {
+			fmt.Fprintf(os.Stderr, "invalid -select %q: line and char must be numbers\n", s)
+			return out, false
+		}
+		out[i*2], out[i*2+1] = line-1, char-1
 	}
-	start := strings.SplitN(parts[0], ":", 2)
-	end := strings.SplitN(parts[1], ":", 2)
-	if len(start) != 2 || len(end) != 2 {
-		fmt.Fprintf(os.Stderr, "invalid -select format %q (expected LINE:CHAR-LINE:CHAR)\n", s)
-		return
-	}
-	var a, b, c, d int
-	var err error
-	if a, err = strconv.Atoi(start[0]); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid -select start line %q\n", start[0])
-		return
-	}
-	if b, err = strconv.Atoi(start[1]); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid -select start char %q\n", start[1])
-		return
-	}
-	if c, err = strconv.Atoi(end[0]); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid -select end line %q\n", end[0])
-		return
-	}
-	if d, err = strconv.Atoi(end[1]); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid -select end char %q\n", end[1])
-		return
-	}
-	return a - 1, b - 1, c - 1, d - 1, true
+	return out, true
 }

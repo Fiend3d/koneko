@@ -1,2 +1,5 @@
 koneko
 koneko.exe*
+
+koneko.test.exe
+*.test.exe
