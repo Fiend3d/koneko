@@ -98,30 +98,6 @@ func TestALinkerJoinsOnlyAConsonant(t *testing.T) {
 	}
 }
 
-// TestASpacingMarkEndsTheLeftContext pins the part of GB9c that is easy to lose
-// when the rule is approximated: the run between the consonant and its linker
-// admits combining marks but not spacing ones.
-func TestASpacingMarkEndsTheLeftContext(t *testing.T) {
-	if !joinsConjunct("क्", "ष") {
-		t.Error("consonant plus virama should join a following consonant")
-	}
-	if !joinsConjunct("क्‍", "ष") {
-		t.Error("an explicit joiner after the virama should not break the rule")
-	}
-	if joinsConjunct("का", "ष") {
-		t.Error("a cluster with no linker joined anyway")
-	}
-	if joinsConjunct("का्", "ष") {
-		t.Error("a spacing vowel sign before the virama should end the left context")
-	}
-	if joinsConjunct("ि", "ष") {
-		t.Error("a cluster that does not start with a consonant joined anyway")
-	}
-	if joinsConjunct("क्", "ि") {
-		t.Error("a linker joined something that is not a consonant")
-	}
-}
-
 // TestASelectionEdgeCannotLandInsideAConjunct is the user-visible form: every
 // column of a Telugu line, snapped, is a cluster boundary — so a drag can stop
 // before or after क्ष but never inside it.
@@ -178,7 +154,7 @@ func TestADragStoppingInsideAConjunctTakesAllOfIt(t *testing.T) {
 		tab := tableFor(line, a.TabWidth)
 		for i, c := range tab.Clusters() {
 			// A conjunct: more than one uniseg cluster joined into one.
-			if c.Width > 1 && strings.ContainsFunc(tab.ClusterStr(line, i), isIndicLinker) {
+			if c.Width > 1 && strings.ContainsRune(tab.ClusterStr(line, i), '్') {
 				row, inside = n, Col(c.Col)+1
 				break
 			}

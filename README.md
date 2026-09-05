@@ -162,51 +162,22 @@ Bubble Tea version also held the file open for its whole session, so this is not
 a new restriction in practice, but mapping makes the failure mode a fault rather
 than a short read.
 
-`uniseg` v0.4.7 — the newest release — implements the grapheme rules through
-GB9b, so it breaks an Indic conjunct in two: `परीक्षण` comes out as `प री क् ष
-ण` rather than `प री क्ष ण`. That is Unicode 15.1's rule GB9c, and koneko
-applies it over uniseg's segmentation in `conjunct.go`, from the
-`Indic_Conjunct_Break` property. Without it a selection edge could stop inside a
-conjunct: half the ligature was highlighted, and because a terminal groups cells
-by their attributes before shaping them, the two halves were then drawn as
-separate glyphs instead of the conjunct. Telugu and Devanagari are written
-almost entirely in conjuncts, so it is most of the text rather than a corner of
-it. The renderer preserves these joined clusters as complete buffer symbols,
-so incremental redraws cannot insert cursor moves inside a conjunct.
+Unicode segmentation and terminal widths belong to catatui. Koneko uses
+`catatui.SegmentGraphemes` to build byte-to-column tables and expand tabs, and
+renders through ordinary `Buffer.SetStringn`. There is no separate grapheme
+joiner, terminal-width correction, forced-width cell, or custom buffer writer
+in Koneko.
 
-The property covers six scripts: Devanagari, Bengali, Gujarati, Oriya, Telugu
-and Malayalam. Tamil additionally uses tailored selection boundaries for the
-ligatures `க்ஷ`, `ஶ்ரீ`, and `ஸ்ரீ`, as described in the
-[W3C Tamil layout requirements](https://www.w3.org/TR/2020/WD-ilreq-taml-20200616/).
-Other Tamil sequences with explicit pulli remain separate.
+catatui keeps Indic conjuncts and Tamil ksha/sri ligatures intact through
+measurement, clipping, buffer diffing, and terminal output. Its Windows Terminal
+width policy also accounts for Bengali spacing marks and the two-cell limit
+per Unicode cluster. Applications targeting another terminal can configure
+`catatui.DefaultWidthPolicy` once at startup, before creating buffers.
 
-Layout, selection, truncation, and drawing share `textGraphemes`. Widths start
-with catatui's measurement. On Windows they follow Windows Terminal's grapheme
-mode, which [caps a Unicode cluster at two cells](https://github.com/microsoft/terminal/blob/main/src/types/CodepointWidthDetector.cpp).
-The cap is applied after joining Indic conjuncts: `न्दी` takes two columns,
-not the three obtained by adding the separate pieces. Tailored Tamil selection
-units retain the sum of their terminal clusters' widths. The buffer receives
-explicit width overrides where its own measurement differs.
-
-Windows spacing marks also need a correction before that cap: uniseg treats
-some marks with the grapheme property `Extend` as zero-width, while Windows
-Terminal assigns them a column. This includes Bengali AA (`া`), so `লা` and
-`খা` occupy two columns. The same correction covers corresponding marks in
-Tamil, Malayalam, and Odia, keeping pointer positions and redraws aligned.
-
-Getting that number wrong corrupts the frame in one of two ways, and both were
-seen on the way here. Measure a cluster short and the next cell is written into
-the middle of a glyph the terminal has already laid down, which took every
-consonant carrying a spacing vowel sign off the screen and turned `हिन्दी` into
-`न्दी`. Measure it long and the extra columns are never written at all — a wide
-cell covers its own trailing columns, so the diff skips them — and the previous
-frame's text stays there, which put stray characters beside every combining mark
-and every joined emoji.
-
-The Windows width policy assumes Windows Terminal's grapheme measurement mode;
-terminal emulators using a different measurement mode may need a different
-policy. Regression tests inspect the VT output and incremental redraws over
-existing text, in addition to checking the selection and buffer contents.
+Regression tests cover the Unicode corpus, forward and backward selections,
+clipping, and incremental terminal output over existing text. Core segmentation
+and width-policy regressions live in catatui; Koneko retains the viewer and
+selection integration tests.
 
 Syntax highlighting tokenises a window around the visible range rather than the
 whole file, so a block comment opened far above the viewport can be mis-coloured.

@@ -191,39 +191,7 @@ func renderRow(buf *catatui.Buffer, x, y uint16, row *Row, th *Theme) {
 	right := x + row.Width
 	emitRow(row, th, func(text string, style catatui.Style) {
 		if cursor < right {
-			cursor = setGraphemeString(buf, cursor, y, text, right-cursor, style)
+			cursor, _ = buf.SetStringn(cursor, y, text, right-cursor, style)
 		}
 	})
-}
-
-// setGraphemeString preserves the same clusters and widths used for hit
-// testing. Buffer.SetStringn resegments with uniseg (without GB9c), causing
-// cursor moves inside Hindi conjuncts in the final VT output.
-func setGraphemeString(buf *catatui.Buffer, x, y uint16, text string, width uint16, style catatui.Style) uint16 {
-	if firstNonASCII(text) == len(text) {
-		x, _ = buf.SetStringn(x, y, text, width, style)
-		return x
-	}
-	right := min(buf.Area.Right(), catatui.SatAdd(x, width))
-	for glyph, w := range textGraphemes(text) {
-		if w <= 0 {
-			continue
-		}
-		if w > Col(right-x) {
-			break
-		}
-		cell := buf.Cell(catatui.Position{X: x, Y: y})
-		if cell == nil {
-			break
-		}
-		cell.SetSymbol(glyph).SetStyle(style).SetDiffOption(catatui.CellDiffNone)
-		if w != Col(catatui.StringWidth(glyph)) {
-			cell.SetDiffOption(catatui.CellForcedWidth(uint16(w)))
-		}
-		end := x + uint16(w)
-		for x++; x < end; x++ {
-			buf.CellAt(x, y).Reset()
-		}
-	}
-	return x
 }

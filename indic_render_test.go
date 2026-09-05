@@ -96,10 +96,7 @@ func TestWindowsIndicWidthsLeaveNoPhantomColumns(t *testing.T) {
 			}
 			w := Col(1)
 			if col < tc.width {
-				w = terminalGraphemeWidth(Col(catatui.StringWidth(pc.Cell.GetSymbol())))
-				if pc.Cell.GetSymbol() == "க்ஷி" {
-					w = 3
-				}
+				w = Col(catatui.StringWidth(pc.Cell.GetSymbol()))
 				if pc.Cell.Bg != testTheme().Palette.SelBg {
 					t.Errorf("%q: unselected cell at %d", tc.text, col)
 				}

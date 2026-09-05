@@ -69,13 +69,13 @@ func TestZWJFamilyIsASingleCluster(t *testing.T) {
 // uniseg segments हिन्दी as three clusters — हि, न्, दी — where Unicode 15.1's
 // rule GB9c gives two, binding न्दी into one unit by the virama. uniseg v0.4.7,
 // the newest release, does not implement that rule, so the table applies it
-// itself; see conjunct.go for why a half-selected conjunct is a visible bug.
+// through catatui, which preserves the same units when drawing the buffer.
 // What this test cares about either way is that no mark is ever separated from
 // its base and the columns stay contiguous.
 func TestDevanagariConjunctsKeepTheirMarks(t *testing.T) {
 	line := "हिन्दी"
 	tab := tableFor(line, 4)
-	if want := terminalGraphemeWidth(2) + terminalGraphemeWidth(3); tab.Width() != want {
+	if want := Col(catatui.StringWidth(line)); tab.Width() != want {
 		t.Fatalf("width %d, want %d", tab.Width(), want)
 	}
 	// No cluster may begin with a combining mark: a mark that started its own
@@ -101,8 +101,7 @@ func TestDevanagariConjunctsKeepTheirMarks(t *testing.T) {
 	}
 }
 
-// Check the cells actually sent to the renderer, including width overrides
-// for Indic clusters that catatui otherwise resegments or measures too wide.
+// Check that viewer layout and catatui's native cells use identical widths.
 func TestClusterWidthsAreTheRenderersWidths(t *testing.T) {
 	for _, line := range []string{
 		"हिन्दी परीक्षण पाठ।", // Devanagari

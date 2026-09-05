@@ -5,19 +5,14 @@
 // uniseg.StringWidth, runewidth.RuneWidth per rune rather than per cluster, and
 // lipgloss.Width) that disagreed on ZWJ sequences and emoji presentation
 // selectors, and it freely mixed byte offsets with display columns. Everything
-// here goes through textGraphemes: uniseg plus Indic joining, catatui's width
-// corrections and Windows Terminal's two-cell cap per Unicode cluster. The
-// renderer stores those same symbols and widths directly in the buffer, so
-// the final terminal diff cannot undo the joining or remeasure a conjunct.
+// here goes through catatui.SegmentGraphemes, which shares its boundaries and
+// widths with Buffer.SetStringn. Koneko only adds tab stops and byte offsets.
 package main
 
 import (
-	"iter"
-	"runtime"
 	"unicode"
 
 	"github.com/Fiend3d/catatui"
-	"github.com/rivo/uniseg"
 )
 
 // Col is a display column: one terminal cell, measured after tab expansion.
@@ -80,7 +75,8 @@ func (t *ClusterTable) Rebuild(line string, tabWidth int) {
 	}
 
 	byteOff := 0
-	for cluster, w := range textGraphemes(line) {
+	for g := range catatui.SegmentGraphemes(line) {
+		cluster, w := g.Symbol, g.Width
 		width := int32(w)
 		if cluster == "\t" {
 			width = tab - (col % tab)
@@ -91,72 +87,6 @@ func (t *ClusterTable) Rebuild(line string, tabWidth int) {
 	}
 
 	t.totalWidth = Col(col)
-}
-
-// textGraphemes is shared by layout and drawing. In particular, a GB9c
-// conjunct must remain one symbol all the way through the terminal diff;
-// joining it only in ClusterTable leaves the backend free to split it again.
-func textGraphemes(s string) iter.Seq2[string, Col] {
-	return func(yield func(string, Col) bool) {
-		state, start, end := -1, 0, 0
-		var width Col
-		prev := ""
-		rest := s
-		for len(rest) > 0 {
-			var g string
-			var w int
-			g, rest, w, state = uniseg.FirstGraphemeClusterInString(rest, state)
-			indic := joinsConjunct(prev, g)
-			tamil := joinsTamilLigature(prev, g)
-			if end > start && !indic && !tamil {
-				if !yield(s[start:end], width) {
-					return
-				}
-				start, width = end, 0
-			}
-			end += len(g)
-			width += terminalSegmentWidth(g, w)
-			if indic {
-				width = terminalGraphemeWidth(width)
-			}
-			prev = g
-		}
-		if end > start {
-			yield(s[start:end], width)
-		}
-	}
-}
-
-// Some spacing marks have Grapheme_Cluster_Break=Extend, so uniseg gives
-// them zero width even though Windows Terminal gives them a column. Bengali
-// AA (U+09BE), for example, makes লা two columns, not one. Correct the
-// segment before joining conjuncts and capping their combined advance.
-func terminalSegmentWidth(g string, unisegWidth int) Col {
-	width := Col(catatui.GraphemeWidth(g, unisegWidth))
-	if runtime.GOOS == "windows" && width < 2 {
-		for _, r := range g {
-			if unicode.Is(unicode.Mc, r) && uniseg.StringWidth(string(r)) == 0 {
-				width++
-				// The two Hangul tone marks are wide spacing marks.
-				if r == 0x302E || r == 0x302F {
-					width++
-				}
-			}
-		}
-	}
-	return terminalGraphemeWidth(width)
-}
-
-// Windows Terminal's grapheme measurement sums character widths and then
-// caps the entire cluster at two cells. Applying the cap before joining a
-// conjunct reserves phantom columns (e.g. three for न्दी), leaving gaps and
-// stale text when the frame is updated.
-// https://github.com/microsoft/terminal/blob/main/src/types/CodepointWidthDetector.cpp
-func terminalGraphemeWidth(width Col) Col {
-	if runtime.GOOS == "windows" {
-		return min(width, 2)
-	}
-	return width
 }
 
 // firstNonASCII returns the index of the first byte needing real grapheme
@@ -303,7 +233,8 @@ func DisplayWidth(s string, tabWidth int) Col {
 	}
 	tab := int32(max(tabWidth, 1))
 	var col int32
-	for cluster, w := range textGraphemes(s) {
+	for g := range catatui.SegmentGraphemes(s) {
+		cluster, w := g.Symbol, g.Width
 		if cluster == "\t" {
 			col += tab - (col % tab)
 		} else {
@@ -339,7 +270,8 @@ func TruncateToWidth(s string, maxWidth Col) string {
 	}
 	var col Col
 	byteOff := 0
-	for cluster, cw := range textGraphemes(s) {
+	for g := range catatui.SegmentGraphemes(s) {
+		cluster, cw := g.Symbol, Col(g.Width)
 		if col+cw > maxWidth {
 			return s[:byteOff]
 		}
