@@ -171,21 +171,28 @@ conjunct: half the ligature was highlighted, and because a terminal groups cells
 by their attributes before shaping them, the two halves were then drawn as
 separate glyphs instead of the conjunct. Telugu and Devanagari are written
 almost entirely in conjuncts, so it is most of the text rather than a corner of
-it. Joining changes no width — the pieces keep the columns they had — so nothing
-downstream of the cluster table moves.
+it. The renderer preserves these joined clusters as complete buffer symbols,
+so incremental redraws cannot insert cursor moves inside a conjunct.
 
 The property covers six scripts: Devanagari, Bengali, Gujarati, Oriya, Telugu
-and Malayalam. Kannada, Tamil, Gurmukhi and Sinhala have viramas of their own
-and are deliberately not in it, so their conjuncts still break like any other
-cluster.
+and Malayalam. Tamil additionally uses tailored selection boundaries for the
+ligatures `க்ஷ`, `ஶ்ரீ`, and `ஸ்ரீ`, as described in the
+[W3C Tamil layout requirements](https://www.w3.org/TR/2020/WD-ilreq-taml-20200616/).
+Other Tamil sequences with explicit pulli remain separate.
 
-How wide a cluster is belongs to the terminal, not to Unicode, and koneko takes
-its columns from catatui rather than measuring them again, so the two cannot
-drift. Windows Terminal segments text into grapheme clusters and advances by the
-cluster's unicode width: a spacing combining mark adds a column, a non-spacing
-one adds none, and a sequence held together by joiners counts once. `हि` is two
-columns even though it is drawn as one glyph; `👨‍👩‍👧‍👦` is two even though it
-is seven code points.
+Layout, selection, truncation, and drawing share `textGraphemes`. Widths start
+with catatui's measurement. On Windows they follow Windows Terminal's grapheme
+mode, which [caps a Unicode cluster at two cells](https://github.com/microsoft/terminal/blob/main/src/types/CodepointWidthDetector.cpp).
+The cap is applied after joining Indic conjuncts: `न्दी` takes two columns,
+not the three obtained by adding the separate pieces. Tailored Tamil selection
+units retain the sum of their terminal clusters' widths. The buffer receives
+explicit width overrides where its own measurement differs.
+
+Windows spacing marks also need a correction before that cap: uniseg treats
+some marks with the grapheme property `Extend` as zero-width, while Windows
+Terminal assigns them a column. This includes Bengali AA (`া`), so `লা` and
+`খা` occupy two columns. The same correction covers corresponding marks in
+Tamil, Malayalam, and Odia, keeping pointer positions and redraws aligned.
 
 Getting that number wrong corrupts the frame in one of two ways, and both were
 seen on the way here. Measure a cluster short and the next cell is written into
@@ -196,9 +203,10 @@ cell covers its own trailing columns, so the diff skips them — and the previou
 frame's text stays there, which put stray characters beside every combining mark
 and every joined emoji.
 
-The console API is no help in settling it. `GetConsoleScreenBufferInfo` reports
-a width per code point — eleven for that family — even under Windows Terminal,
-whose screen shows two. The terminal's own buffer is what the reader sees.
+The Windows width policy assumes Windows Terminal's grapheme measurement mode;
+terminal emulators using a different measurement mode may need a different
+policy. Regression tests inspect the VT output and incremental redraws over
+existing text, in addition to checking the selection and buffer contents.
 
 Syntax highlighting tokenises a window around the visible range rather than the
 whole file, so a block comment opened far above the viewport can be mis-coloured.

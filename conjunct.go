@@ -21,6 +21,7 @@
 package main
 
 import (
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -149,4 +150,16 @@ func joinsConjunct(prev, next string) bool {
 		}
 	}
 	return linked
+}
+
+// Tamil's ksha and sri ligatures need tailored selection boundaries: default
+// extended grapheme clusters split them at the pulli. Other Tamil consonant
+// sequences retain their explicit pulli and remain separate.
+// https://www.w3.org/TR/2020/WD-ilreq-taml-20200616/#h_grapheme_boundaries
+func joinsTamilLigature(prev, next string) bool {
+	if prev == "க்" {
+		r, _ := utf8.DecodeRuneInString(next)
+		return r == 'ஷ'
+	}
+	return (prev == "ஶ்" || prev == "ஸ்") && strings.HasPrefix(next, "ரீ")
 }

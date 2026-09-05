@@ -52,13 +52,13 @@ func renderBar(buf *catatui.Buffer, a *App, th *Theme, y uint16) {
 	// reconstruct by looking at the screen.
 	left := TruncateToWidth(a.leftStatus(), Col(width-rightW))
 
-	x, _ := buf.SetStringn(0, y, left, width, style)
+	x := setGraphemeString(buf, 0, y, left, width, style)
 	if gap := width - rightW; x < gap {
 		fill(buf, x, y, gap-x, style)
 		x = gap
 	}
 	if x < width {
-		x, _ = buf.SetStringn(x, y, right, width-x, style)
+		x = setGraphemeString(buf, x, y, right, width-x, style)
 	}
 	if x < width {
 		fill(buf, x, y, width-x, style)
@@ -101,7 +101,7 @@ func searchInfo(a *App) string {
 // writeBar draws text at y and pads the rest of the row, so the bar always
 // covers its full width even after the text shortens.
 func writeBar(buf *catatui.Buffer, y uint16, text string, width uint16, style catatui.Style) {
-	x, _ := buf.SetStringn(0, y, text, width, style)
+	x := setGraphemeString(buf, 0, y, text, width, style)
 	if x < width {
 		fill(buf, x, y, width-x, style)
 	}

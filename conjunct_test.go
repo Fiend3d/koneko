@@ -52,10 +52,8 @@ func TestIndicConjunctsAreOneCluster(t *testing.T) {
 	}
 }
 
-// TestJoiningAConjunctLeavesTheLineWidthAlone: the pieces are joined, not
-// remeasured. A cluster that covered two columns as two pieces covers two as
-// one, so nothing downstream of the table moves.
-func TestJoiningAConjunctLeavesTheLineWidthAlone(t *testing.T) {
+// Joined clusters and the cells sent to the terminal must agree on width.
+func TestJoinedConjunctLayoutMatchesRenderedCells(t *testing.T) {
 	for _, line := range []string{
 		"हिन्दी परीक्षण पाठ।",
 		"తెలుగు పరీక్ష వచనం.",
@@ -63,15 +61,14 @@ func TestJoiningAConjunctLeavesTheLineWidthAlone(t *testing.T) {
 		"বাংলা পরীক্ষা লেখা।",
 	} {
 		tab := tableFor(line, 4)
-		if got, want := tab.Width(), Col(catatui.StringWidth(line)); got != want {
-			t.Errorf("%q: table width %d, renderer width %d", line, got, want)
-		}
+		buf := catatui.NewBuffer(catatui.NewRect(0, 0, 80, 1))
+		renderRow(buf, 0, 0, &Row{Line: line, Table: tab, Width: 80}, testTheme())
 		var col Col
 		for _, c := range tab.Clusters() {
 			if Col(c.Col) != col {
 				t.Fatalf("%q: gap or overlap at column %d", line, c.Col)
 			}
-			col = c.EndCol()
+			col += Col(buf.CellAt(uint16(c.Col), 0).Width())
 		}
 		if col != tab.Width() {
 			t.Errorf("%q: columns end at %d, width is %d", line, col, tab.Width())
@@ -200,10 +197,8 @@ func TestADragStoppingInsideAConjunctTakesAllOfIt(t *testing.T) {
 	l := a.Layout()
 	y := uint16(row - a.YOff)
 
-	// A conjunct occupies one cell per piece, and every one of them has to agree
-	// about the selection or the terminal shapes the pieces apart. The blank
-	// continuation cell of a wide glyph is skipped: nothing is drawn there, and
-	// the terminal paints it from the cell that owns it.
+	// Every conjunct occupies one buffer cell with blank continuation columns.
+	// The terminal paints those columns from the complete symbol's leading cell.
 	for i, c := range tab.Clusters() {
 		var first, known bool
 		for col := Col(c.Col); col < c.EndCol(); {
@@ -216,7 +211,7 @@ func TestADragStoppingInsideAConjunctTakesAllOfIt(t *testing.T) {
 				t.Errorf("cluster %q at column %d is only half selected",
 					tab.ClusterStr(line, i), c.Col)
 			}
-			col += max(Col(catatui.StringWidth(cell.GetSymbol())), 1)
+			col += max(Col(cell.Width()), 1)
 		}
 	}
 	if txt := a.SelectedText(); strings.HasSuffix(txt, "\u0c4d") {

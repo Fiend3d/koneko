@@ -75,7 +75,7 @@ func TestZWJFamilyIsASingleCluster(t *testing.T) {
 func TestDevanagariConjunctsKeepTheirMarks(t *testing.T) {
 	line := "हिन्दी"
 	tab := tableFor(line, 4)
-	if want := Col(catatui.StringWidth(line)); tab.Width() != want {
+	if want := terminalGraphemeWidth(2) + terminalGraphemeWidth(3); tab.Width() != want {
 		t.Fatalf("width %d, want %d", tab.Width(), want)
 	}
 	// No cluster may begin with a combining mark: a mark that started its own
@@ -101,41 +101,29 @@ func TestDevanagariConjunctsKeepTheirMarks(t *testing.T) {
 	}
 }
 
-// TestClusterWidthsAreTheRenderersWidths is the rule the Indic scripts turn on.
-//
-// A cluster is as wide as the terminal makes it, which is not the same as the
-// one glyph it is drawn as: a spacing combining mark takes a column of its own,
-// so हि covers two however tightly the pair is drawn. Measuring it as one put
-// the next cluster on top of its second half and the terminal dropped the pair,
-// which is how हिन्दी came out as न्दी. Measuring it long is no better — see
-// catatui's clusterWidth for the other half of that story.
-//
-// The number belongs to catatui, which is what turns clusters into cells, so
-// this pins the agreement rather than the number: every cluster in the table
-// has to measure exactly what the renderer will measure, or the two disagree
-// about where the next glyph goes.
+// Check the cells actually sent to the renderer, including width overrides
+// for Indic clusters that catatui otherwise resegments or measures too wide.
 func TestClusterWidthsAreTheRenderersWidths(t *testing.T) {
 	for _, line := range []string{
 		"हिन्दी परीक्षण पाठ।", // Devanagari
 		"বাংলা পরীক্ষা লেখা।", // Bengali
-		"தமிழ் சோதனை உரை.", // Tamil
+		"தமிழ் சோதனை உரை.",    // Tamil
 		"తెలుగు పరీక్ష వచనం.", // Telugu
-		"ภาษาไทยทดสอบ", // Thai
-		"العربية اختبار", // Arabic
+		"ภาษาไทยทดสอบ",        // Thai
+		"العربية اختبار",      // Arabic
 		"日本語 한글 ｱｲｳ ﾊﾞ",
 		"👨‍👩‍👧‍👦 🏳️‍🌈 á",
 	} {
 		tab := tableFor(line, 4)
-		if got, want := tab.Width(), Col(catatui.StringWidth(line)); got != want {
-			t.Errorf("%q: table width %d, renderer width %d", line, got, want)
-		}
+		buf := catatui.NewBuffer(catatui.NewRect(0, 0, 80, 1))
+		renderRow(buf, 0, 0, &Row{Line: line, Table: tab, Width: 80}, testTheme())
 		var col Col
 		for i, c := range tab.Clusters() {
 			text := tab.ClusterStr(line, i)
 			if Col(c.Col) != col {
 				t.Fatalf("%q: cluster %q starts at column %d, want %d", line, text, c.Col, col)
 			}
-			if got, want := Col(c.Width), Col(catatui.StringWidth(text)); got != want {
+			if got, want := Col(c.Width), Col(buf.CellAt(uint16(c.Col), 0).Width()); got != want {
 				t.Errorf("%q: cluster %q is %d columns here, %d to the renderer",
 					line, text, got, want)
 			}

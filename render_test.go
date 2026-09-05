@@ -49,7 +49,7 @@ func rowText(buf *catatui.Buffer, y, w uint16) string {
 	for x := uint16(0); x < w; {
 		sym := buf.CellAt(x, y).GetSymbol()
 		b.WriteString(sym)
-		x += max(uint16(catatui.StringWidth(sym)), 1)
+		x += max(buf.CellAt(x, y).Width(), 1)
 	}
 	return b.String()
 }
@@ -62,7 +62,7 @@ func cellsAcross(buf *catatui.Buffer, x, y uint16, n Col) string {
 	for i := Col(0); i < n; {
 		sym := buf.CellAt(x+uint16(i), y).GetSymbol()
 		b.WriteString(sym)
-		i += max(Col(catatui.StringWidth(sym)), 1)
+		i += max(Col(buf.CellAt(x+uint16(i), y).Width()), 1)
 	}
 	return b.String()
 }
@@ -412,10 +412,8 @@ func TestSelectingIndicTextSelectsEveryCluster(t *testing.T) {
 				t.Fatalf("line %d %q: cluster %q at column %d is not selected",
 					row+1, line, text, c.Col)
 			}
-			// A tab is the one cluster drawn as something else: spaces. And a
-			// cluster can span several cells — an Indic conjunct is one cluster
-			// here and one cell per piece in the buffer — so the columns it
-			// covers are read back together.
+			// A tab is drawn as spaces. Every other cluster is one complete
+			// buffer symbol, with its width including any continuation columns.
 			if text != "\t" {
 				got := cellsAcross(buf, l.ContentX+uint16(c.Col), y, Col(c.Width))
 				if got != text {

@@ -1,6 +1,125 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+// Exercise every cell, including the right half of a wide glyph and the
+// interior of expanded tabs. Keep the corpus on screen so mouse actions are
+// not silently ignored or interpreted as autoscrolling.
+func TestUnicodeDoubleClickSelectsTheGlyphUnderThePointer(t *testing.T) {
+	a := testApp(t, "testdata/unicode.txt", 256, 256)
+	for row := 0; row < a.TotalLines; row++ {
+		line := a.fb.Line(row)
+		tab := tableFor(line, a.TabWidth)
+		for i, c := range tab.Clusters() {
+			start, end := FindWordBounds(line, tab, Col(c.Col))
+			if start == end {
+				start, end = Col(c.Col), c.EndCol()
+			}
+			want := line[tab.ColToByte(start):tab.ColToByte(end)]
+			for col := Col(c.Col); col < c.EndCol(); col++ {
+				a.Sel.Clear()
+				a.clickCount = 0
+				x := a.Layout().ContentX + uint16(col)
+				for click := 0; click < 2; click++ {
+					a.Apply(Action{Kind: ActMouseDown, X: x, Y: uint16(row), Button: MouseLeft})
+					a.Apply(Action{Kind: ActMouseUp, X: x, Y: uint16(row), Button: MouseLeft})
+				}
+				if got := a.SelectedText(); got != want {
+					t.Fatalf("row %d cluster %d col %d: got %q, want %q", row, i, col, got, want)
+				}
+			}
+		}
+	}
+}
+
+func TestUnicodeDragsCopyExactlyTheHighlightedGraphemes(t *testing.T) {
+	a := testApp(t, "testdata/unicode.txt", 256, 256)
+	for row := 0; row < a.TotalLines; row++ {
+		line := a.fb.Line(row)
+		tab := tableFor(line, a.TabWidth)
+		for from := Col(0); from <= tab.Width(); from++ {
+			for _, delta := range []Col{-7, -2, -1, 1, 2, 7} {
+				to := max(Col(0), min(from+delta, tab.Width()))
+				a.Sel.Clear()
+				drag(a, row, uint16(from), uint16(to))
+				lo, hi := tab.SnapCol(from), tab.SnapCol(to)
+				if lo > hi {
+					lo, hi = hi, lo
+				}
+				want := line[tab.ColToByte(lo):tab.ColToByte(hi)]
+				if got := a.SelectedText(); got != want {
+					t.Fatalf("row %d drag %d->%d: got %q, want %q", row, from, to, got, want)
+				}
+				var painted strings.Builder
+				for _, p := range piecesSel(line, 0, 256, a.Sel.Start.Col, a.Sel.End.Col, a.Sel.IsVisible()) {
+					if p.style.GetBg() == theme.Palette.SelBg {
+						painted.WriteString(p.text)
+					}
+				}
+				var expanded strings.Builder
+				for i, c := range tab.Clusters() {
+					if Col(c.Col) >= lo && Col(c.Col) < hi {
+						g := tab.ClusterStr(line, i)
+						if g == "\t" {
+							g = strings.Repeat(" ", int(c.Width))
+						}
+						expanded.WriteString(g)
+					}
+				}
+				if painted.String() != expanded.String() {
+					t.Fatalf("row %d drag %d->%d: highlighted %q, want %q", row, from, to, painted.String(), expanded.String())
+				}
+			}
+		}
+	}
+}
+
+func TestWordSelectionUsesRawColumnsWhenScrolledAndExtended(t *testing.T) {
+	a := testApp(t, "testdata/unicode.txt", 40, 12)
+	for row := 1; row < a.TotalLines; row++ {
+		line := a.fb.Line(row)
+		tab := tableFor(line, a.TabWidth)
+		for _, c := range tab.Clusters() {
+			if c.Width < 2 {
+				continue
+			}
+			lo, hi := FindWordBounds(line, tab, Col(c.Col))
+			if lo == hi {
+				lo, hi = Col(c.Col), c.EndCol()
+			}
+			// Put the final cell of this grapheme at the left of the pane.
+			a.YOff, a.XOff = row-1, c.EndCol()-1
+			x := a.Layout().ContentX
+			a.Sel.Clear()
+			a.clickCount = 0
+			for click := 0; click < 2; click++ {
+				a.Apply(Action{Kind: ActMouseDown, X: x, Y: 1, Button: MouseLeft})
+				a.Apply(Action{Kind: ActMouseUp, X: x, Y: 1, Button: MouseLeft})
+			}
+			if a.Sel.Start != (Pos{row, lo}) || a.Sel.End != (Pos{row, hi}) {
+				t.Fatalf("row %d scrolled double click: %v..%v, want %d..%d", row, a.Sel.Start, a.Sel.End, lo, hi)
+			}
+			// Both dragging and right-click extension must identify the same
+			// target as double-clicking, even at an interior display column.
+			for _, kind := range []ActionKind{ActMouseDrag, ActMouseDown} {
+				a.beginSelect(SelectWord, Pos{row, 0})
+				anchor := a.Sel.Start
+				button := MouseLeft
+				if kind == ActMouseDown {
+					a.Sel.Finish()
+					button = MouseRight
+				}
+				a.Apply(Action{Kind: kind, X: x, Y: 1, Button: button})
+				if a.Sel.Start != anchor || a.Sel.End != (Pos{row, hi}) {
+					t.Fatalf("row %d extension %v: %v..%v, want %v..%v", row, kind, a.Sel.Start, a.Sel.End, anchor, Pos{row, hi})
+				}
+			}
+		}
+	}
+}
 
 func TestBeginAndExtendOrdersPositions(t *testing.T) {
 	var s Selection
@@ -230,6 +349,7 @@ func mixedWidthRow(t *testing.T, a *App) int {
 
 // drag drives a press, a move and a release across one row, in screen columns.
 func drag(a *App, row int, fromX, toX uint16) {
+	a.clickCount = 0 // Each simulated drag starts a new click sequence.
 	l := a.Layout()
 	y := uint16(row - a.YOff)
 	a.Apply(Action{Kind: ActMouseDown, X: l.ContentX + fromX, Y: y, Button: MouseLeft})
@@ -244,7 +364,7 @@ func drag(a *App, row int, fromX, toX uint16) {
 // boundaries the two cover different text, which on a line of Tamil is most
 // drags.
 func TestADragPaintsExactlyWhatItCopies(t *testing.T) {
-	a := testApp(t, "testdata/unicode.txt", 80, 24)
+	a := testApp(t, "testdata/unicode.txt", 256, 256)
 	row := mixedWidthRow(t, a)
 	width := a.LineWidth(row)
 

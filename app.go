@@ -389,7 +389,14 @@ func (a *App) rangeForPoint(mode SelectMode, p Pos) (Pos, Pos) {
 		if start < end {
 			return Pos{p.Row, start}, Pos{p.Row, end}
 		}
+		// Symbols (including emoji) and whitespace still have a selectable
+		// grapheme, even though they are not alphanumeric words.
+		if i, ok := t.IndexAtCol(p.Col); ok {
+			c := t.Clusters()[i]
+			return Pos{p.Row, Col(c.Col)}, Pos{p.Row, c.EndCol()}
+		}
 	}
+	p.Col = a.snapCol(p.Row, p.Col)
 	return p, p
 }
 
@@ -589,7 +596,7 @@ func (a *App) mouseDown(act Action) {
 		case 3:
 			mode = SelectLine
 		}
-		a.beginSelect(mode, Pos{row, a.snapCol(row, raw)})
+		a.beginSelect(mode, Pos{row, raw})
 
 	case MouseRight:
 		// Right click extends the existing selection by moving whichever end is
@@ -597,7 +604,7 @@ func (a *App) mouseDown(act Action) {
 		if inGutter {
 			a.extendSelect(SelectLine, Pos{row, 0})
 		} else {
-			a.extendSelect(a.Sel.Mode, Pos{row, a.snapCol(row, raw)})
+			a.extendSelect(a.Sel.Mode, Pos{row, raw})
 		}
 		a.Sel.Finish()
 	}
@@ -632,7 +639,7 @@ func (a *App) mouseDrag(act Action) {
 
 	row := max(min(a.YOff+y, a.TotalLines-1), 0)
 	x := max(min(int(act.X)-int(l.ContentX), int(l.ContentW)), 0)
-	a.extendSelect(a.Sel.Mode, Pos{row, a.snapCol(row, a.XOff+Col(x))})
+	a.extendSelect(a.Sel.Mode, Pos{row, a.XOff + Col(x)})
 }
 
 // scrollToRow maps a screen row in the scrollbar track to a scroll offset.
