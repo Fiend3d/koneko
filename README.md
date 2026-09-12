@@ -15,8 +15,8 @@ syntax highlighting, git change markers and correct Unicode.
 
 - **Select with the mouse, copy with <kbd>y</kbd>.** Click, drag, double-click a
   word, triple-click a line. The text goes straight to the system clipboard.
-- **Point Claude at code.** Select some lines, press <kbd>r</kbd>, and paste
-  `src/app.go:12-18` into Claude Code or any other tool that understands
+- **Point your agent at code.** Select some lines, press <kbd>r</kbd>, and paste
+  `src/app.go:12-18` into OpenCode Code or any other tool that understands
   `path:line`.
 - **Unicode that works.** Emoji, ZWJ sequences, CJK, Devanagari, Bengali,
   Tamil and Thai render, scroll and select as whole characters. No broken cells
@@ -92,7 +92,7 @@ theme gets a proper selection background.
 - [Modal Commander](https://github.com/Fiend3d/mc) uses these to open its
   search results right on the matching text.
 - Going the other way, <kbd>r</kbd> copies a `path:line` reference that you
-  can paste into Claude Code, an editor or a chat.
+  can paste into an agent, an editor or a chat.
 
 ### Help built in
 Press <kbd>F1</kbd> for a full-screen, scrollable key reference.
