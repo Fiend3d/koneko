@@ -77,11 +77,6 @@ type App struct {
 	lastClick     Pos
 	lastClickTime time.Time
 	clickCount    int
-	// clickLine is set while a single click's line selection is still waiting
-	// to see whether the press turns into a drag, which selects characters from
-	// pressPos instead.
-	clickLine bool
-	pressPos  Pos
 
 	// refPath is the file's path as copied by the reference key, resolved on
 	// first use.
@@ -399,7 +394,6 @@ func (a *App) Apply(act Action) {
 
 	case ActMouseUp:
 		a.scrollbarDrag = false
-		a.clickLine = false
 		a.Sel.Finish()
 
 	case ActMouseWheel:
@@ -649,16 +643,12 @@ func (a *App) mouseDown(act Action) {
 			a.beginSelect(SelectLine, Pos{row, 0})
 			return
 		}
-		// A single click selects its line; a drag from it selects characters
-		// instead, which mouseDrag decides once the pointer moves.
-		mode := SelectLine
-		a.clickLine = false
+		mode := SelectChar
 		switch a.clickCountAt(Pos{row, a.glyphCol(row, raw)}) {
-		case 1:
-			a.clickLine = true
-			a.pressPos = Pos{row, raw}
 		case 2:
 			mode = SelectWord
+		case 3:
+			mode = SelectLine
 		}
 		a.beginSelect(mode, Pos{row, raw})
 
@@ -683,10 +673,6 @@ func (a *App) mouseDrag(act Action) {
 	}
 	if !a.Sel.Selecting {
 		return
-	}
-	if a.clickLine {
-		a.clickLine = false
-		a.beginSelect(SelectChar, a.pressPos)
 	}
 
 	// A drag that reaches an edge keeps scrolling, so a selection can be

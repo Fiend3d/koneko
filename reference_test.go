@@ -5,46 +5,25 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
-// click drives a single press and release at a screen position in the text.
-func click(a *App, row int, x uint16) {
-	a.lastClickTime = time.Time{} // Each simulated click starts a new sequence.
+func TestASingleClickLeavesNoSelection(t *testing.T) {
+	a := testApp(t, "testdata/small.go", 80, 24)
 	l := a.Layout()
-	y := uint16(row - a.YOff)
-	a.Apply(Action{Kind: ActMouseDown, X: l.ContentX + x, Y: y, Button: MouseLeft})
-	a.Apply(Action{Kind: ActMouseUp, X: l.ContentX + x, Y: y, Button: MouseLeft})
-}
-
-func TestASingleClickSelectsTheLine(t *testing.T) {
-	a := testApp(t, "testdata/small.go", 80, 24)
-	click(a, 0, 3)
-	if a.Sel.Mode != SelectLine || !a.Sel.Active {
-		t.Fatalf("mode %v active %v, want an active line selection", a.Sel.Mode, a.Sel.Active)
-	}
-	if got, want := a.SelectedText(), a.fb.Line(0); got != want {
-		t.Errorf("selected %q, want the whole line %q", got, want)
+	a.Apply(Action{Kind: ActMouseDown, X: l.ContentX + 3, Y: 0, Button: MouseLeft})
+	a.Apply(Action{Kind: ActMouseUp, X: l.ContentX + 3, Y: 0, Button: MouseLeft})
+	if a.Sel.IsVisible() {
+		t.Errorf("a single click selected %v..%v", a.Sel.Start, a.Sel.End)
 	}
 }
 
-func TestADragFromAClickSelectsCharacters(t *testing.T) {
-	a := testApp(t, "testdata/small.go", 80, 24)
-	drag(a, 0, 2, 5)
-	if a.Sel.Mode != SelectChar {
-		t.Fatalf("mode = %v, want SelectChar", a.Sel.Mode)
-	}
-	if got := a.SelectedText(); got != "cka" {
-		t.Errorf("selected %q, want %q", got, "cka")
-	}
-}
-
-func TestAClickOnABlankLineSelectsIt(t *testing.T) {
+func TestAGutterClickOnABlankLineSelectsIt(t *testing.T) {
 	a := testApp(t, "testdata/small.go", 80, 24)
 	// Line 2 of small.go is empty.
-	click(a, 1, 0)
+	a.Apply(Action{Kind: ActMouseDown, X: 0, Y: 1, Button: MouseLeft})
+	a.Apply(Action{Kind: ActMouseUp, X: 0, Y: 1, Button: MouseLeft})
 	if !a.Sel.Active {
-		t.Fatal("a click on a blank line left no selection")
+		t.Fatal("a gutter click on a blank line left no selection")
 	}
 	if _, _, ok := a.Sel.RowSpan(1, 0); !ok {
 		t.Error("the blank line is not painted as selected")

@@ -13,10 +13,10 @@ syntax highlighting, git change markers and correct Unicode.
 
 ---
 
-- **Select with the mouse, copy with <kbd>y</kbd>.** Click a line, drag across
-  text, double-click a word. The text goes straight to the system clipboard.
-- **Point Claude at code.** Click a line, press <kbd>r</kbd>, and paste
-  `src/app.go:12` into Claude Code or any other tool that understands
+- **Select with the mouse, copy with <kbd>y</kbd>.** Click, drag, double-click a
+  word, triple-click a line. The text goes straight to the system clipboard.
+- **Point Claude at code.** Select some lines, press <kbd>r</kbd>, and paste
+  `src/app.go:12-18` into Claude Code or any other tool that understands
   `path:line`.
 - **Unicode that works.** Emoji, ZWJ sequences, CJK, Devanagari, Bengali,
   Tamil and Thai render, scroll and select as whole characters. No broken cells
@@ -51,10 +51,10 @@ your terminal's own palette. Selected text keeps its syntax colours, and each
 theme gets a proper selection background.
 
 ### Selection & clipboard
-- Click a line to select it. Drag to select exactly the text you want.
-  Right-click to extend the selection to the clicked point.
-- Double-click selects a word. Keep dragging to extend by word, or from a
-  triple-click, by line.
+- Click to place the cursor. Drag to select. Right-click to extend the selection
+  to the clicked point.
+- Double-click selects a word and triple-click selects a line. Keep dragging to
+  extend by word or by line.
 - Click a line number to select the whole line. Right-click one to extend the
   selection to it.
 - Dragging past the top or bottom edge scrolls automatically, so selections can
@@ -188,7 +188,7 @@ koneko -select=120:5-124:1 server.log
 #### Mouse
 | Input | Action |
 |---|---|
-| Left click | Select line (drag to select text) |
+| Left click | Set cursor / start selection |
 | Left drag | Extend selection |
 | Right click | Extend selection to clicked position |
 | Double click | Select word (drag to extend by word) |
