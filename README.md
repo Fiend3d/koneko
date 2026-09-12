@@ -428,3 +428,7 @@ To eyeball a rendered frame without a terminal:
 ```
 KONEKO_DUMP=1 KONEKO_DUMP_SCROLL=72 go test -run TestDumpFrame -v
 ```
+
+## License
+
+[MIT](LICENSE.md) © 2026 Vlad Tagintsev
