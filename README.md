@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/icon.svg" width="64" height="64" alt="koneko">
+
 # koneko
 
 **A fast terminal file viewer you can actually select text in.**
