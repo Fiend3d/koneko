@@ -71,6 +71,8 @@ func decodeNormalKey(ev term.Event) Action {
 		return Action{Kind: ActDeselect}
 	case ev.IsRune('y'):
 		return Action{Kind: ActCopy}
+	case ev.IsRune('r'):
+		return Action{Kind: ActCopyReference}
 	case ev.IsRune('x'), ev.IsRune('X'):
 		return Action{Kind: ActExtendToLines}
 

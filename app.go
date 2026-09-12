@@ -77,6 +77,15 @@ type App struct {
 	lastClick     Pos
 	lastClickTime time.Time
 	clickCount    int
+	// clickLine is set while a single click's line selection is still waiting
+	// to see whether the press turns into a drag, which selects characters from
+	// pressPos instead.
+	clickLine bool
+	pressPos  Pos
+
+	// refPath is the file's path as copied by the reference key, resolved on
+	// first use.
+	refPath string
 
 	// scratch is reused for every row of every frame, so steady-state rendering
 	// does not allocate.
@@ -228,6 +237,7 @@ const (
 	ActSelectAll
 	ActDeselect
 	ActCopy
+	ActCopyReference
 	ActExtendToLines
 	ActToggleLineNumbers
 	ActToggleScrollbar
@@ -318,6 +328,9 @@ func (a *App) Apply(act Action) {
 	case ActCopy:
 		a.copySelection()
 
+	case ActCopyReference:
+		a.copyReference()
+
 	case ActExtendToLines:
 		if !a.Sel.IsVisible() {
 			return
@@ -386,6 +399,7 @@ func (a *App) Apply(act Action) {
 
 	case ActMouseUp:
 		a.scrollbarDrag = false
+		a.clickLine = false
 		a.Sel.Finish()
 
 	case ActMouseWheel:
@@ -421,7 +435,14 @@ func (a *App) glyphCol(row int, col Col) Col {
 func (a *App) rangeForPoint(mode SelectMode, p Pos) (Pos, Pos) {
 	switch mode {
 	case SelectLine:
-		return Pos{p.Row, 0}, Pos{p.Row, a.LineWidth(p.Row)}
+		w := a.LineWidth(p.Row)
+		// An empty line has no text to span, and a zero-width selection is
+		// discarded when it finishes. Taking its newline instead keeps a click
+		// on a blank line visibly selected; RowSpan paints only this row.
+		if w == 0 && p.Row+1 < a.TotalLines {
+			return Pos{p.Row, 0}, Pos{p.Row + 1, 0}
+		}
+		return Pos{p.Row, 0}, Pos{p.Row, w}
 	case SelectWord:
 		line, t := a.LineTable(p.Row)
 		start, end := FindWordBounds(line, t, p.Col)
@@ -628,12 +649,16 @@ func (a *App) mouseDown(act Action) {
 			a.beginSelect(SelectLine, Pos{row, 0})
 			return
 		}
-		mode := SelectChar
+		// A single click selects its line; a drag from it selects characters
+		// instead, which mouseDrag decides once the pointer moves.
+		mode := SelectLine
+		a.clickLine = false
 		switch a.clickCountAt(Pos{row, a.glyphCol(row, raw)}) {
+		case 1:
+			a.clickLine = true
+			a.pressPos = Pos{row, raw}
 		case 2:
 			mode = SelectWord
-		case 3:
-			mode = SelectLine
 		}
 		a.beginSelect(mode, Pos{row, raw})
 
@@ -658,6 +683,10 @@ func (a *App) mouseDrag(act Action) {
 	}
 	if !a.Sel.Selecting {
 		return
+	}
+	if a.clickLine {
+		a.clickLine = false
+		a.beginSelect(SelectChar, a.pressPos)
 	}
 
 	// A drag that reaches an edge keeps scrolling, so a selection can be

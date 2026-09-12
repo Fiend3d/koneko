@@ -1,26 +1,247 @@
+<div align="center">
+
 # koneko
 
-A fast terminal file viewer — `less`/`bat` with mouse-driven text selection,
-clipboard copy, search and syntax highlighting.
+**A fast terminal file viewer you can actually select text in.**
+
+Like `less` and `bat`, with mouse selection, clipboard copy, search,
+syntax highlighting, git change markers and correct Unicode.
+
+[Features](#features) · [Install](#install) · [Usage](#usage) · [Keys](#key-bindings) · [Performance](#performance)
+
+</div>
+
+---
+
+- **Select with the mouse, copy with <kbd>y</kbd>.** Click a line, drag across
+  text, double-click a word. The text goes straight to the system clipboard.
+- **Point Claude at code.** Click a line, press <kbd>r</kbd>, and paste
+  `src/app.go:12` into Claude Code or any other tool that understands
+  `path:line`.
+- **Unicode that works.** Emoji, ZWJ sequences, CJK, Devanagari, Bengali,
+  Tamil and Thai render, scroll and select as whole characters. No broken cells
+  and no leftovers on screen.
+- **Fast on big files.** Opens a 9.8 MB, 270k-line file in about 6 ms. Draws a
+  frame in about 110 µs with 6 allocations. Uses no CPU while idle.
+- **Knows about git.** The gutter marks lines added, modified and deleted since
+  `HEAD`, and one key jumps to the next change.
+
+## Features
+
+### Viewing
+- The file is memory-mapped, so large files open immediately and scroll smoothly.
+- Line numbers and a draggable scrollbar, each togglable.
+- Horizontal scrolling that stops at the widest visible line, so you can't
+  scroll off into empty space.
+- Adjustable tab width (`-tab-width`, default 4).
+- Handles CRLF line endings and files without a trailing newline.
+- The status bar shows the file name, the selection range, the current search
+  match and the scroll position.
+
+### Syntax highlighting
+- Hundreds of languages via [chroma](https://github.com/alecthomas/chroma),
+  detected from the file name.
+- Highlighting runs on a background worker, so scrolling never waits for it.
+- Toggle it with <kbd>h</kbd>, or start with `-no-highlight`.
+
+### Themes
+Eight built-in themes: **dracula** (default), **monokai**, **nord**,
+**tokyonight**, **github**, **autumn**, **ferra** and **base16**. base16 uses
+your terminal's own palette. Selected text keeps its syntax colours, and each
+theme gets a proper selection background.
+
+### Selection & clipboard
+- Click a line to select it. Drag to select exactly the text you want.
+  Right-click to extend the selection to the clicked point.
+- Double-click selects a word. Keep dragging to extend by word, or from a
+  triple-click, by line.
+- Click a line number to select the whole line. Right-click one to extend the
+  selection to it.
+- Dragging past the top or bottom edge scrolls automatically, so selections can
+  be longer than the screen.
+- <kbd>a</kbd> selects all, <kbd>x</kbd> extends to full lines, <kbd>d</kbd>
+  clears, and <kbd>y</kbd> copies and shows how many lines were copied.
+- <kbd>r</kbd> copies a reference to the selected lines instead of their text:
+  `src/app.go:12`, or `src/app.go:12-18` for several lines. The path is relative
+  to the git root, or absolute outside a repository.
+- Word and character boundaries follow grapheme clusters, so a double-click
+  never splits `हिन्दी`.
+
+### Search
+- <kbd>/</kbd> searches the whole file, case-insensitive, starting from where
+  you're looking.
+- <kbd>n</kbd> / <kbd>N</kbd> step through matches and wrap around. Each match
+  is selected and scrolled into view, so <kbd>y</kbd> copies it. The status bar
+  shows which match you're on, for example `malloc 3/314`.
+- The prompt has proper editing: arrows, <kbd>Home</kbd>/<kbd>End</kbd>,
+  <kbd>Del</kbd>, <kbd>Ctrl</kbd>+<kbd>U</kbd>.
+
+### Git change markers
+- Inside a git repository, lines changed since `HEAD` get a mark in the gutter:
+  a **green** bar for added lines, **yellow** for modified, and a **red** `▁`
+  where lines were deleted.
+- <kbd>]</kbd> and <kbd>[</kbd> jump to the next and previous change, and
+  <kbd>c</kbd> toggles the markers.
+- The diff runs in the background, so a file never waits on git to open.
+
+### Built for integration
+- `-select=LINE:CHAR-LINE:CHAR` opens a file with a range already selected and
+  in view. `CHAR` counts grapheme clusters, so a caller doesn't need to know the
+  file's encoding.
+- `-search=TEXT` opens a file already jumped to the first match.
+- [Modal Commander](https://github.com/Fiend3d/mc) uses these to open its
+  search results right on the matching text.
+- Going the other way, <kbd>r</kbd> copies a `path:line` reference that you
+  can paste into Claude Code, an editor or a chat.
+
+### Help built in
+Press <kbd>F1</kbd> for a full-screen, scrollable key reference.
+
+## Install
+
+### With Modal Commander
+koneko ships with [**mc**](https://github.com/Fiend3d/mc) and is its default
+<kbd>F3</kbd> viewer, so installing mc gets you koneko too.
+
+### From source
+Requires Go 1.27 or newer.
+
+```
+git clone https://github.com/Fiend3d/koneko
+cd koneko
+go build            # or .\build.ps1 on Windows
+```
+
+On Linux, clipboard copy needs `xclip`, `xsel` or `wl-clipboard`.
+
+## Usage
 
 ```
 koneko [OPTIONS] <FILE>
 ```
 
-Press <kbd>F1</kbd> inside the viewer for the full key list.
+| Option | Description |
+|---|---|
+| `-theme=NAME` | Colour theme: `autumn`, `base16`, `dracula`, `ferra`, `github`, `monokai`, `nord`, `tokyonight` (default `dracula`) |
+| `-tab-width=N` | Tab display width (default `4`) |
+| `-no-line-numbers` | Start with line numbers hidden |
+| `-no-scrollbar` | Start with the scrollbar hidden |
+| `-no-highlight` | Start with syntax highlighting off |
+| `-no-git` | Don't show git change markers |
+| `-search=TEXT` | Open with `TEXT` searched and the first match shown |
+| `-select=L:C-L:C` | Open with a range selected (1-based line and character) |
+| `-v`, `-version` | Print the version and exit |
 
-Inside a git repository, lines changed since `HEAD` are marked in the gutter:
-a green bar for added lines, yellow for modified, and a red `▁` under the line
-where lines were deleted. <kbd>]</kbd> and <kbd>[</kbd> jump to the next and
-previous change, <kbd>c</kbd> toggles the markers, and `-no-git` turns them off
-at startup. The diff runs in the background, so opening a file never waits on
-git.
+`-search` and `-select` can't be used together.
 
-Built on [catatui](https://github.com/Fiend3d/catatui), a Go port of ratatui:
-you draw into a `Buffer` of cells, a constraint solver decides where things go,
-and the `Terminal` writes only what changed.
+```
+koneko main.go
+koneko -theme=nord -tab-width=8 Makefile
+koneko -select=120:5-124:1 server.log
+```
 
-## Why the rewrite
+## Key bindings
+
+#### Navigation
+| Key | Action |
+|---|---|
+| <kbd>↑</kbd> / <kbd>k</kbd> | Scroll up one line |
+| <kbd>↓</kbd> / <kbd>j</kbd> | Scroll down one line |
+| <kbd>←</kbd> / <kbd>→</kbd> | Scroll left / right |
+| <kbd>PgUp</kbd> / <kbd>PgDn</kbd> | Scroll half a screen |
+| <kbd>Home</kbd> / <kbd>g</kbd> | Go to top |
+| <kbd>End</kbd> / <kbd>G</kbd> | Go to bottom |
+| <kbd>H</kbd> | Reset horizontal scroll |
+
+#### Selection
+| Key | Action |
+|---|---|
+| <kbd>a</kbd> | Select all |
+| <kbd>d</kbd> | Deselect |
+| <kbd>y</kbd> | Copy selection |
+| <kbd>r</kbd> | Copy `path:line` reference |
+| <kbd>x</kbd> | Extend selection to full lines |
+
+#### Search
+| Key | Action |
+|---|---|
+| <kbd>/</kbd> | Enter search mode |
+| <kbd>Enter</kbd> | Commit search |
+| <kbd>Esc</kbd> | Cancel search |
+| <kbd>n</kbd> | Next match |
+| <kbd>N</kbd> | Previous match |
+
+#### Display
+| Key | Action |
+|---|---|
+| <kbd>l</kbd> | Toggle line numbers |
+| <kbd>s</kbd> | Toggle scrollbar |
+| <kbd>h</kbd> | Toggle syntax highlighting |
+
+#### Git
+| Key | Action |
+|---|---|
+| <kbd>]</kbd> | Next change |
+| <kbd>[</kbd> | Previous change |
+| <kbd>c</kbd> | Toggle change markers |
+
+#### Mouse
+| Input | Action |
+|---|---|
+| Left click | Select line (drag to select text) |
+| Left drag | Extend selection |
+| Right click | Extend selection to clicked position |
+| Double click | Select word (drag to extend by word) |
+| Triple click | Select line (drag to extend by line) |
+| Wheel | Scroll |
+| Left click on gutter | Select whole line |
+| Right click on gutter | Extend selection to line |
+| Drag scrollbar | Jump to position |
+
+#### Other
+| Key | Action |
+|---|---|
+| <kbd>F1</kbd> | Open / close help |
+| <kbd>q</kbd> / <kbd>Ctrl</kbd>+<kbd>C</kbd> | Quit |
+
+## Performance
+
+- **~110 µs** per frame at 80×24 and **~480 µs** at 200×50, so drawing is
+  never the bottleneck.
+- **6 allocations per frame** (about 175 bytes), whatever the terminal size.
+- **Zero CPU while idle.** The event loop blocks until something happens.
+- **One frame per burst.** A fast wheel spin or drag is drawn once, not once
+  per event.
+
+Measured against [nezumi](https://github.com/Fiend3d/nezumi), the Rust/ratatui
+implementation of the same program, on the same machine (i5-12400F, Windows) and
+the same 9.8 MB / 270k-line corpus (`sqlite3.c`). Both suites run the same
+benchmarks; nezumi's are criterion, koneko's are `go test -bench`.
+
+| | koneko (Go) | nezumi (Rust) | |
+|---|---|---|---|
+| Random line access | 8.5 ns | 62.7 ns | **7.4× faster** |
+| Cluster table, ASCII line | 101 ns | 1080 ns | **10.7× faster** |
+| Cluster table, unicode line | 790 ns | 849 ns | **1.1× faster** |
+| Copy 40 lines | 1.00 µs | 2.33 µs | **2.3× faster** |
+| Copy whole file | 4.19 ms | 9.60 ms | **2.3× faster** |
+| Open and index | 5.84 ms | 4.92 ms | 1.2× slower |
+| Frame at 80×24 | 110 µs | 84 µs | 1.3× slower |
+| Frame at 200×50 | 480 µs | 336 µs | 1.4× slower |
+| Search `sqlite3_malloc` | 7.43 ms | 5.44 ms | 1.4× slower |
+
+Both implementations find the same 314 matches, which the test suite asserts.
+
+## Under the hood
+
+koneko is built on [catatui](https://github.com/Fiend3d/catatui), a Go port of
+ratatui: you draw into a `Buffer` of cells, a constraint solver decides where
+things go, and the `Terminal` writes only what changed.
+
+<details>
+<summary><b>Why the rewrite</b></summary>
+
+<br>
 
 koneko was previously written with Bubble Tea and Lip Gloss, and it could not
 render unicode correctly. The cause was architectural rather than a bug waiting
@@ -49,7 +270,12 @@ at every horizontal offset and at seven pane widths, and asserts each row is
 exactly the requested number of cells. A second test asserts that every cell of
 a rendered frame was actually written — a gap would mean a row came up short.
 
-## Behaviour that deliberately differs from the Bubble Tea version
+</details>
+
+<details>
+<summary><b>Behaviour that deliberately differs from the Bubble Tea version</b></summary>
+
+<br>
 
 These are places where the old code was wrong, not places where the rewrite took
 liberties.
@@ -76,26 +302,12 @@ liberties.
 caller does not need to know the file's encoding to point at the third character
 of a line. The flags keep Go's single-dash style, unchanged from before.
 
-## Performance
+</details>
 
-Measured against [nezumi](https://github.com/Fiend3d/nezumi), the Rust/ratatui
-implementation of the same program, on the same machine (i5-12400F, Windows) and
-the same 9.8 MB / 270k-line corpus (`sqlite3.c`). Both suites run the same
-benchmarks; nezumi's are criterion, koneko's are `go test -bench`.
+<details>
+<summary><b>Where koneko wins and loses against nezumi</b></summary>
 
-| | koneko (Go) | nezumi (Rust) | |
-|---|---|---|---|
-| Random line access | 8.5 ns | 62.7 ns | **7.4× faster** |
-| Cluster table, ASCII line | 101 ns | 1080 ns | **10.7× faster** |
-| Cluster table, unicode line | 790 ns | 849 ns | **1.1× faster** |
-| Copy 40 lines | 1.00 µs | 2.33 µs | **2.3× faster** |
-| Copy whole file | 4.19 ms | 9.60 ms | **2.3× faster** |
-| Open and index | 5.84 ms | 4.92 ms | 1.2× slower |
-| Frame at 80×24 | 110 µs | 84 µs | 1.3× slower |
-| Frame at 200×50 | 480 µs | 336 µs | 1.4× slower |
-| Search `sqlite3_malloc` | 7.43 ms | 5.44 ms | 1.4× slower |
-
-Both implementations find the same 314 matches, which the test suite asserts.
+<br>
 
 Where koneko wins, it is mostly not the language. Line access is faster because
 Go strings carry no UTF-8 validity requirement, so a line is a slice of the
@@ -109,19 +321,16 @@ offset index so it is allocated exactly once.
 Where it loses, it is mostly the language: the render path and the search scan
 are both tight byte loops where Rust's codegen and `memchr` are ahead.
 
-A frame renders in ~110 µs at 80×24 and ~480 µs at 200×50, so drawing is never
-the bottleneck. The event loop blocks when idle and drains each burst of input
-before drawing, so a fast wheel spin or drag produces one frame rather than one
-per event — the Bubble Tea version rendered once per message.
+The event loop blocks when idle and drains each burst of input before drawing,
+so a fast wheel spin or drag produces one frame rather than one per event — the
+Bubble Tea version rendered once per message.
 
-Steady-state rendering costs **6 allocations per frame** (about 175 bytes),
-independent of terminal size.
+</details>
 
-```
-go test -bench=. ./...    # needs testdata/sqlite3.c; benchmarks skip without it
-```
+<details>
+<summary><b>Changes made to catatui</b></summary>
 
-## Changes made to catatui
+<br>
 
 Profiling koneko's render path found two hot spots in the library, both fixed
 upstream in the local checkout:
@@ -161,7 +370,12 @@ small VT interpreter that replays the backend's output against a simulated
 terminal which *deliberately disagrees* about cluster widths, so the re-anchoring
 rule is verified rather than assumed.
 
-## Caveats
+</details>
+
+<details>
+<summary><b>Caveats</b></summary>
+
+<br>
 
 The file is memory-mapped for the life of the process. It stays open, and
 truncating or overwriting it underneath a running `koneko` is undefined. The
@@ -193,13 +407,17 @@ be needed to fix it.
 
 Git change markers are taken once, when the file is opened, by running
 `git diff HEAD` on the file as it is on disk. They do not refresh while the
-viewer is open, and an untracked file shows none.
+viewer is open, and an untracked file shows none. Searching non-ASCII text works
+but is case-sensitive for the non-ASCII part.
+
+</details>
 
 ## Development
 
 ```
 go test ./...
 go build
+go test -bench=. ./...    # needs testdata/sqlite3.c; benchmarks skip without it
 ```
 
 The benchmark corpus `testdata/sqlite3.c` is committed here; the benchmarks skip

@@ -110,6 +110,15 @@ func TestSearchModeHandlesEditingKeys(t *testing.T) {
 	}
 }
 
+func TestRCopiesAReferenceOnlyInNormalMode(t *testing.T) {
+	if act := Decode(keyRune('r'), ModeNormal); act.Kind != ActCopyReference {
+		t.Errorf("r in normal mode = %d, want ActCopyReference", act.Kind)
+	}
+	if act := Decode(keyRune('r'), ModeSearch); act.Kind == ActCopyReference {
+		t.Error("r must be typed, not copy a reference, while searching")
+	}
+}
+
 func TestQuitOnlyFromNormalAndCtrlC(t *testing.T) {
 	if act := Decode(keyRune('q'), ModeNormal); act.Kind != ActQuit {
 		t.Error("q should quit in normal mode")
