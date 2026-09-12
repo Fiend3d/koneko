@@ -80,6 +80,12 @@ func decodeNormalKey(ev term.Event) Action {
 		return Action{Kind: ActToggleScrollbar}
 	case ev.IsRune('h'):
 		return Action{Kind: ActToggleHighlight}
+	case ev.IsRune('c'):
+		return Action{Kind: ActToggleGitChanges}
+	case ev.IsRune(']'):
+		return Action{Kind: ActNextChange}
+	case ev.IsRune('['):
+		return Action{Kind: ActPrevChange}
 
 	case ev.IsKey(term.KeyF1):
 		return Action{Kind: ActOpenHelp}

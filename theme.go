@@ -104,6 +104,20 @@ func (t *Theme) LineNumSelected() catatui.Style {
 	return catatui.NewStyle().Bg(t.Palette.Bg).Fg(t.Palette.Fg)
 }
 
+// GitMarker is the style of a change marker in the gutter.
+func (t *Theme) GitMarker(kind ChangeKind) catatui.Style {
+	fg := t.Palette.Dim
+	switch kind {
+	case ChangeAdded:
+		fg = t.Palette.Green
+	case ChangeModified:
+		fg = t.Palette.Yellow
+	case ChangeRemovedBelow, ChangeRemovedAbove:
+		fg = t.Palette.Red
+	}
+	return catatui.NewStyle().Bg(t.Palette.Bg).Fg(fg)
+}
+
 func (t *Theme) Scrollbar() catatui.Style {
 	return catatui.NewStyle().Bg(t.Palette.Bg).Fg(t.Palette.Dim)
 }

@@ -26,7 +26,10 @@ func renderViewer(buf *catatui.Buffer, a *App, th *Theme) {
 				if selOK {
 					style = th.LineNumSelected()
 				}
-				renderGutter(buf, y, l.Gutter, lineNo+1, style)
+				if a.ShowLineNum {
+					renderGutter(buf, y, l.Gutter, lineNo+1, style)
+				}
+				renderMarker(buf, l.Gutter-1, y, a.GitChangeAt(lineNo), th)
 			}
 
 			var runs []StyleRun
@@ -82,6 +85,29 @@ func renderGutter(buf *catatui.Buffer, y, width uint16, n int, style catatui.Sty
 	if x < width {
 		buf.SetStringn(x, y, " ", width-x, style)
 	}
+}
+
+// Change marker glyphs. They are constants, so drawing one allocates nothing.
+const (
+	markerChanged      = "▎"
+	markerRemovedBelow = "▁"
+	markerRemovedAbove = "▔"
+)
+
+// renderMarker draws a git change marker in the gutter's last cell, the one
+// renderGutter leaves blank after the number. No change draws that blank, which
+// is also what fills a marker-only gutter when line numbers are hidden.
+func renderMarker(buf *catatui.Buffer, x, y uint16, kind ChangeKind, th *Theme) {
+	sym := " "
+	switch kind {
+	case ChangeAdded, ChangeModified:
+		sym = markerChanged
+	case ChangeRemovedBelow:
+		sym = markerRemovedBelow
+	case ChangeRemovedAbove:
+		sym = markerRemovedAbove
+	}
+	buf.SetStringn(x, y, sym, 1, th.GitMarker(kind))
 }
 
 // scrollbarSymbol reports whether the thumb covers this row.

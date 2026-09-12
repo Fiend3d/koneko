@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -21,6 +22,7 @@ type Options struct {
 	LineNumbers bool
 	Scrollbar   bool
 	Highlight   bool
+	GitChanges  bool
 	Search      string
 	Select      string
 	Theme       string
@@ -48,6 +50,16 @@ func run() error {
 	defer fb.Close()
 
 	app := NewApp(fb, opts)
+
+	// Git runs alongside terminal setup rather than after it, and reports
+	// whenever it finishes; nothing waits on it. Cancelling on exit kills a git
+	// still running, and the buffered channel lets its goroutine finish either
+	// way.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	gitResults := make(chan GitChanges, 1)
+	app.AttachGitLoader(func() { go loadGitChanges(ctx, opts.File, gitResults) })
+	app.RequestGitChanges()
 
 	// RecoverAndRestore puts the terminal back if anything below panics, so a
 	// crash leaves a usable shell and a readable stack trace.
@@ -92,6 +104,8 @@ func run() error {
 			app.Apply(Decode(ev, app.Mode))
 		case r := <-hlResults:
 			app.InstallHighlight(r)
+		case c := <-gitResults:
+			app.InstallGitChanges(c)
 		}
 
 		// Drain whatever else is already queued before drawing again. A fast
@@ -108,6 +122,8 @@ func run() error {
 				}
 			case r := <-hlResults:
 				app.InstallHighlight(r)
+			case c := <-gitResults:
+				app.InstallGitChanges(c)
 			default:
 				draining = false
 			}
@@ -143,6 +159,7 @@ func parseFlags() (Options, bool) {
 	noLineNumbers := flag.Bool("no-line-numbers", false, "hide line numbers")
 	noScrollbar := flag.Bool("no-scrollbar", false, "hide scrollbar")
 	noHighlight := flag.Bool("no-highlight", false, "disable syntax highlighting")
+	noGit := flag.Bool("no-git", false, "disable git change markers")
 	flag.StringVar(&o.Search, "search", "", "search string")
 	flag.StringVar(&o.Select, "select", "", "selection range (e.g. 1:7-1:10)")
 	flag.StringVar(&o.Theme, "theme", defaultTheme,
@@ -160,6 +177,7 @@ func parseFlags() (Options, bool) {
 	o.LineNumbers = !*noLineNumbers
 	o.Scrollbar = !*noScrollbar
 	o.Highlight = !*noHighlight
+	o.GitChanges = !*noGit
 
 	if flag.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "Usage: koneko [options] <file>\n\n")

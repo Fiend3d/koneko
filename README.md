@@ -9,6 +9,13 @@ koneko [OPTIONS] <FILE>
 
 Press <kbd>F1</kbd> inside the viewer for the full key list.
 
+Inside a git repository, lines changed since `HEAD` are marked in the gutter:
+a green bar for added lines, yellow for modified, and a red `▁` under the line
+where lines were deleted. <kbd>]</kbd> and <kbd>[</kbd> jump to the next and
+previous change, <kbd>c</kbd> toggles the markers, and `-no-git` turns them off
+at startup. The diff runs in the background, so opening a file never waits on
+git.
+
 Built on [catatui](https://github.com/Fiend3d/catatui), a Go port of ratatui:
 you draw into a `Buffer` of cells, a constraint solver decides where things go,
 and the `Terminal` writes only what changed.
@@ -183,6 +190,10 @@ Syntax highlighting tokenises a window around the visible range rather than the
 whole file, so a block comment opened far above the viewport can be mis-coloured.
 chroma exposes no way to resume a lexer from a checkpoint, which is what would
 be needed to fix it.
+
+Git change markers are taken once, when the file is opened, by running
+`git diff HEAD` on the file as it is on disk. They do not refresh while the
+viewer is open, and an untracked file shows none.
 
 ## Development
 

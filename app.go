@@ -44,6 +44,21 @@ type App struct {
 	Highlight   bool
 	hlPending   bool
 
+	// Git change markers. The diff arrives once, asynchronously; until then the
+	// gutter shows none and the jump keys say so.
+	ShowGitChanges bool
+	git            GitChanges
+	gitLoaded      bool
+	gitRequested   bool
+	gitLoad        func()
+	// changeIdx is the hunk the last jump landed on, and changeYOff where that
+	// jump left the view. While the view has not moved, the next jump steps
+	// from the hunk rather than from the screen, which near the end of the file
+	// cannot scroll far enough to put a later hunk past the anchor row.
+	changeIdx    int
+	changeYOff   int
+	changeJumped bool
+
 	TabWidth      int
 	ShowLineNum   bool
 	ShowScrollbar bool
@@ -72,17 +87,22 @@ type App struct {
 
 func NewApp(fb *FileBuffer, opts Options) *App {
 	return &App{
-		fb:            fb,
-		TotalLines:    fb.LineCount(),
-		TabWidth:      opts.TabWidth,
-		ShowLineNum:   opts.LineNumbers,
-		ShowScrollbar: opts.Scrollbar,
-		Highlight:     opts.Highlight,
-		Needle:        opts.Search,
+		fb:             fb,
+		TotalLines:     fb.LineCount(),
+		TabWidth:       opts.TabWidth,
+		ShowLineNum:    opts.LineNumbers,
+		ShowScrollbar:  opts.Scrollbar,
+		Highlight:      opts.Highlight,
+		ShowGitChanges: opts.GitChanges,
+		Needle:         opts.Search,
 	}
 }
 
 func (a *App) AttachHighlighter(h *Highlighter) { a.highlighter = h }
+
+// AttachGitLoader sets what RequestGitChanges calls to start the diff. It must
+// not block: the result comes back through InstallGitChanges.
+func (a *App) AttachGitLoader(load func()) { a.gitLoad = load }
 
 // Layout is where each part of the screen goes, in cells.
 type Layout struct {
@@ -104,8 +124,14 @@ func (a *App) Layout() Layout {
 		l.StatusY = a.Height - statusBarHeight
 	}
 
-	if a.ShowLineNum {
+	// Change markers sit in the cell after the line number, so they cost no
+	// width. Without line numbers they need a column of their own, which only
+	// appears once there is something to put in it.
+	switch {
+	case a.ShowLineNum:
 		l.Gutter = uint16(digits(a.TotalLines) + 1)
+	case a.hasGitMarkers():
+		l.Gutter = 1
 	}
 	l.ContentX = l.Gutter
 
@@ -206,6 +232,9 @@ const (
 	ActToggleLineNumbers
 	ActToggleScrollbar
 	ActToggleHighlight
+	ActToggleGitChanges
+	ActNextChange
+	ActPrevChange
 	ActOpenHelp
 	ActCloseHelp
 	ActOpenSearch
@@ -309,6 +338,16 @@ func (a *App) Apply(act Action) {
 		if a.Highlight {
 			a.RequestHighlight()
 		}
+
+	case ActToggleGitChanges:
+		a.ShowGitChanges = !a.ShowGitChanges
+		a.RequestGitChanges()
+
+	case ActNextChange:
+		a.jumpChange(1)
+
+	case ActPrevChange:
+		a.jumpChange(-1)
 
 	case ActOpenHelp:
 		a.Mode = ModeHelp
@@ -685,6 +724,74 @@ func (a *App) InstallHighlight(r HlResult) {
 		return
 	}
 	a.Hl.Install(r.From, r.Runs)
+}
+
+// --- Git changes -----------------------------------------------------------
+
+// RequestGitChanges starts the diff the first time markers are wanted. Under
+// -no-git that is never, unless they are toggled on, so no git process runs.
+func (a *App) RequestGitChanges() {
+	if !a.ShowGitChanges || a.gitRequested || a.gitLoad == nil {
+		return
+	}
+	a.gitRequested = true
+	a.gitLoad()
+}
+
+// InstallGitChanges accepts the diff.
+func (a *App) InstallGitChanges(c GitChanges) {
+	a.git = c
+	a.gitLoaded = true
+	a.changeJumped = false
+}
+
+func (a *App) hasGitMarkers() bool {
+	return a.ShowGitChanges && a.gitLoaded && len(a.git.Hunks) > 0
+}
+
+// GitChangeAt is the marker for line n, or ChangeNone while markers are hidden
+// or the diff has not arrived.
+func (a *App) GitChangeAt(n int) ChangeKind {
+	if !a.hasGitMarkers() {
+		return ChangeNone
+	}
+	return a.git.At(n)
+}
+
+// jumpChange scrolls to the next (delta 1) or previous (delta -1) hunk,
+// wrapping at either end of the file.
+//
+// The search starts from the row ScrollToShow puts a jump target on, so after
+// scrolling by hand the next jump goes to the next change below what is on
+// screen rather than back to wherever the last jump was.
+func (a *App) jumpChange(delta int) {
+	if !a.gitLoaded {
+		if a.ShowGitChanges {
+			a.StatusMsg = "git changes are still loading"
+		} else {
+			a.StatusMsg = "git changes are off (c to show)"
+		}
+		return
+	}
+	n := len(a.git.Hunks)
+	if n == 0 {
+		a.StatusMsg = "no changes"
+		return
+	}
+
+	var i int
+	switch {
+	case a.changeJumped && a.YOff == a.changeYOff:
+		i = (a.changeIdx + delta + n) % n
+	case delta > 0:
+		i = a.git.Next(a.YOff + a.ContentHeight()/3)
+	default:
+		i = a.git.Prev(a.YOff + a.ContentHeight()/3)
+	}
+
+	a.ScrollToShow(a.git.Hunks[i].Start)
+	a.changeIdx, a.changeYOff, a.changeJumped = i, a.YOff, true
+	a.StatusMsg = fmt.Sprintf("change %d/%d", i+1, n)
 }
 
 // FileName is the base name shown in the status bar.
