@@ -15,4 +15,4 @@ if (Test-Path $output) {
     Remove-Item $output
 }
 
-go build -o $output
+go build -a -o $output
