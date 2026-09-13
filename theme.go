@@ -52,6 +52,32 @@ type Theme struct {
 	Palette Palette
 	styles  [slotCount]catatui.Style
 	slots   map[chroma.TokenType]Slot
+	// tints are the current hunk's row backgrounds, indexed by ChangeKind, and
+	// removedTint the background of removed lines drawn inline.
+	tints       [ChangeRemovedAbove + 1]catatui.Color
+	removedTint catatui.Color
+}
+
+// How much of the marker colour goes into a tint. The current hunk's is faint:
+// it marks where a jump landed over text that still has to be read. Removed
+// lines are stronger, since nothing else tells them apart from the file's own.
+const (
+	hunkTintAlpha    = 0.12
+	removedTintAlpha = 0.3
+)
+
+// tint mixes alpha of fg into bg. A palette that names terminal colours rather
+// than giving RGB cannot be mixed, so it gets the fixed 256-colour entry instead.
+func tint(fg, bg catatui.Color, alpha float64, fallback uint8) catatui.Color {
+	fr, fgr, fb, ok1 := fg.RGB()
+	br, bgr, bb, ok2 := bg.RGB()
+	if !ok1 || !ok2 {
+		return catatui.Indexed(fallback)
+	}
+	mix := func(f, b uint8) uint8 {
+		return uint8(float64(b) + (float64(f)-float64(b))*alpha + 0.5)
+	}
+	return catatui.Rgb(mix(fr, br), mix(fgr, bgr), mix(fb, bb))
 }
 
 var theme *Theme
@@ -80,6 +106,13 @@ func NewTheme(p Palette) *Theme {
 	t.styles[SlotYellowItalic] = italic(p.Yellow)
 	t.styles[SlotFgItalic] = italic(p.Fg)
 	t.styles[SlotFgBold] = bold(p.Fg)
+
+	// 22, 58 and 52 are the 256-colour cube's dark green, olive and dark red.
+	t.tints[ChangeAdded] = tint(p.Green, p.Bg, hunkTintAlpha, 22)
+	t.tints[ChangeModified] = tint(p.Yellow, p.Bg, hunkTintAlpha, 58)
+	t.tints[ChangeRemovedBelow] = tint(p.Red, p.Bg, hunkTintAlpha, 52)
+	t.tints[ChangeRemovedAbove] = t.tints[ChangeRemovedBelow]
+	t.removedTint = tint(p.Red, p.Bg, removedTintAlpha, 52)
 	return t
 }
 
@@ -116,6 +149,19 @@ func (t *Theme) GitMarker(kind ChangeKind) catatui.Style {
 		fg = t.Palette.Red
 	}
 	return catatui.NewStyle().Bg(t.Palette.Bg).Fg(fg)
+}
+
+// ChangeTint is the row background for a line of the given kind in the current
+// hunk. ChangeNone has none.
+func (t *Theme) ChangeTint(kind ChangeKind) catatui.Color { return t.tints[kind] }
+
+// RemovedTint is the row background for a removed line drawn inline.
+func (t *Theme) RemovedTint() catatui.Color { return t.removedTint }
+
+// GitLineNum is the gutter style for a line in the current hunk: its number in
+// the marker colour.
+func (t *Theme) GitLineNum(kind ChangeKind) catatui.Style {
+	return t.GitMarker(kind).AddModifier(catatui.ModifierBold)
 }
 
 func (t *Theme) Scrollbar() catatui.Style {

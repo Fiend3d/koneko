@@ -76,7 +76,7 @@ func (a *App) leftStatus() string {
 
 // rightStatus is the scroll position, with the horizontal offset when scrolled.
 func (a *App) rightStatus() string {
-	shown := min(a.YOff+a.ContentHeight(), a.TotalLines)
+	_, shown := a.VisibleRange()
 	if a.XOff > 0 {
 		return fmt.Sprintf("+%d %d/%d ", a.XOff, shown, a.TotalLines)
 	}

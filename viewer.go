@@ -8,22 +8,61 @@ const thumb = "█"
 
 func renderViewer(buf *catatui.Buffer, a *App, th *Theme) {
 	l := a.Layout()
-	from, to := a.VisibleRange()
+	totalRows := a.TotalRows()
+	cur, curIdx, hasCur := a.CurrentHunk()
+	phantoms := a.phantomsShown()
 
 	for screenRow := uint16(0); screenRow < l.ContentH; screenRow++ {
 		y := screenRow
-		lineNo := from + int(screenRow)
+		lineNo, blk, idx := a.rowAt(a.YOff + int(screenRow))
 
-		if lineNo >= to {
+		switch {
+		case a.YOff+int(screenRow) >= totalRows:
 			// Past the end of the file: an empty row, gutter included.
 			fill(buf, 0, y, l.Gutter+l.ContentW, th.Background())
-		} else {
+
+		case blk >= 0:
+			// A line HEAD has and the file does not: no number, nothing to
+			// select, and a red background so it cannot pass for file text.
+			line, table := a.PhantomTable(blk, idx)
+			if l.Gutter > 0 {
+				fill(buf, 0, y, l.Gutter-1, th.LineNum())
+				buf.SetStringn(l.Gutter-1, y, markerChanged, 1, th.GitMarker(ChangeRemovedBelow))
+			}
+			renderRow(buf, l.ContentX, y, &Row{
+				Line:  line,
+				Table: table,
+				XOff:  a.XOff,
+				Width: l.ContentW,
+				Tint:  th.RemovedTint(),
+			}, th)
+
+		default:
 			line, table := a.LineTable(lineNo)
 			selFrom, selTo, selOK := a.Sel.RowSpan(lineNo, table.Width())
 
+			// The hunk the last jump landed on stands out from the rest. A
+			// deletion's own lines are the removed rows, so its anchor line is
+			// tinted only while those are hidden.
+			var tint catatui.Color
+			inCur := hasCur && lineNo >= cur.Start && lineNo < cur.End
+			if inCur {
+				switch cur.Kind {
+				case ChangeAdded, ChangeModified:
+					tint = th.ChangeTint(cur.Kind)
+				default:
+					if !phantoms || a.hunkBlock(curIdx) < 0 {
+						tint = th.ChangeTint(cur.Kind)
+					}
+				}
+			}
+
 			if l.Gutter > 0 {
 				style := th.LineNum()
-				if selOK {
+				switch {
+				case inCur:
+					style = th.GitLineNum(cur.Kind)
+				case selOK:
 					style = th.LineNumSelected()
 				}
 				if a.ShowLineNum {
@@ -45,11 +84,12 @@ func renderViewer(buf *catatui.Buffer, a *App, th *Theme) {
 				SelOK:   selOK,
 				XOff:    a.XOff,
 				Width:   l.ContentW,
+				Tint:    tint,
 			}, th)
 		}
 
 		if l.HasScrollbar {
-			sym := scrollbarSymbol(int(screenRow), int(l.ContentH), from, a.TotalLines)
+			sym := scrollbarSymbol(int(screenRow), int(l.ContentH), a.YOff, totalRows)
 			buf.SetStringn(l.ScrollbarX, y, sym, 1, th.Scrollbar())
 		}
 	}

@@ -48,6 +48,54 @@ func TestParseDiffMapsHunkHeadersToLines(t *testing.T) {
 	}
 }
 
+func TestParseDiffKeepsRemovedLines(t *testing.T) {
+	long := strings.Repeat("x", 4095)
+	cases := []struct {
+		name string
+		diff string
+		want []Removed
+	}{
+		{"added has none", "@@ -3,0 +4,2 @@\n+a\n+b\n", nil},
+		{"modified sits above its new lines", "@@ -2,2 +2,3 @@ func f() {\n-a\n-b\n+A\n+B\n+C\n",
+			[]Removed{{1, 0, []string{"a", "b"}}}},
+		{"removed below sits above the next line", "@@ -5,2 +4,0 @@\n-a\n-b\n",
+			[]Removed{{4, 0, []string{"a", "b"}}}},
+		{"removed at top", "@@ -1,2 +0,0 @@\n-a\n-b\n", []Removed{{0, 0, []string{"a", "b"}}}},
+		{"line endings and no-newline notes are dropped", "@@ -1 +1 @@\n-a\r\n\\ No newline at end of file\n+b\n",
+			[]Removed{{0, 0, []string{"a"}}}},
+		{
+			"several hunks with file headers",
+			"diff --git a/x b/x\nindex 1..2 100644\n--- a/x\n+++ b/x\n" +
+				"@@ -1 +1 @@\n-a\n+b\n@@ -10,0 +11 @@\n+c\n@@ -20 +20,0 @@\n-d\n",
+			[]Removed{{0, 0, []string{"a"}}, {20, 2, []string{"d"}}},
+		},
+		{
+			// The hunk's marker is dropped, but what it removed is not.
+			"deletion on an added line keeps its lines",
+			"@@ -2,0 +3,2 @@\n+a\n+b\n@@ -3 +4,0 @@\n-c\n",
+			[]Removed{{4, 0, []string{"c"}}},
+		},
+		{
+			"overlong line keeps its first piece",
+			"@@ -1 +1 @@\n-" + long + "@@ -50 +50 @@\n+y\n@@ -9 +9 @@\n-a\n+b\n",
+			[]Removed{{0, 0, []string{long}}, {8, 1, []string{"a"}}},
+		},
+		{
+			"overlong line is cut on a character",
+			"@@ -1 +1 @@\n-" + long[1:] + "é tail\n+b\n",
+			[]Removed{{0, 0, []string{long[1:]}}},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := parseDiff(strings.NewReader(c.diff)).Removed
+			if !reflect.DeepEqual(got, c.want) {
+				t.Errorf("got %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 func TestGitChangesAtRespectsHunkBounds(t *testing.T) {
 	g := GitChanges{Hunks: []Hunk{{2, 4, ChangeAdded}, {4, 5, ChangeRemovedBelow}, {9, 12, ChangeModified}}}
 	want := map[int]ChangeKind{
@@ -116,10 +164,14 @@ func TestLoadGitChangesDiffsAWorkingFileAgainstHead(t *testing.T) {
 
 	out := make(chan GitChanges, 1)
 	loadGitChanges(context.Background(), path, out)
-	got := (<-out).Hunks
+	g := <-out
 	want := []Hunk{{1, 2, ChangeModified}, {2, 3, ChangeRemovedBelow}, {4, 5, ChangeAdded}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %v, want %v", got, want)
+	if !reflect.DeepEqual(g.Hunks, want) {
+		t.Errorf("got %v, want %v", g.Hunks, want)
+	}
+	wantRemoved := []Removed{{1, 0, []string{"b"}}, {3, 1, []string{"d"}}}
+	if !reflect.DeepEqual(g.Removed, wantRemoved) {
+		t.Errorf("removed %v, want %v", g.Removed, wantRemoved)
 	}
 }
 

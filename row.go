@@ -31,6 +31,9 @@ type Row struct {
 	SelOK          bool
 	XOff           Col
 	Width          uint16
+	// Tint, when set, is the background for every cell the selection does not
+	// cover: a changed or removed line.
+	Tint catatui.Color
 }
 
 // emitRow feeds one row's pieces to emit as (text, style) pairs.
@@ -44,7 +47,7 @@ func emitRow(row *Row, th *Theme, emit func(string, catatui.Style)) {
 	}
 
 	clusters := row.Table.Clusters()
-	st := styler{runs: row.Runs, selFrom: row.SelFrom, selTo: row.SelTo, selOK: row.SelOK, theme: th}
+	st := styler{runs: row.Runs, selFrom: row.SelFrom, selTo: row.SelTo, selOK: row.SelOK, tint: row.Tint, theme: th}
 	var emitted Col
 
 	i, ok := row.Table.IndexAtCol(row.XOff)
@@ -132,6 +135,9 @@ func emitRow(row *Row, th *Theme, emit func(string, catatui.Style)) {
 		return
 	}
 	background := th.Background()
+	if row.Tint.IsSet() {
+		background = background.Bg(row.Tint)
+	}
 	tailStart := row.XOff + emitted
 	tailEnd := row.XOff + width
 
@@ -162,6 +168,7 @@ type styler struct {
 	cursor         int
 	selFrom, selTo Col
 	selOK          bool
+	tint           catatui.Color
 	theme          *Theme
 }
 
@@ -181,6 +188,9 @@ func (s *styler) styleOf(c Cluster) catatui.Style {
 	// colours out of selected text and re-rendered it flat.
 	if s.selOK && Col(c.Col) >= s.selFrom && Col(c.Col) < s.selTo {
 		return style.Bg(s.theme.Palette.SelBg)
+	}
+	if s.tint.IsSet() {
+		return style.Bg(s.tint)
 	}
 	return style
 }

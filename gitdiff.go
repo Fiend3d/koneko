@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"unicode/utf8"
 )
 
 // ChangeKind is what happened to a line relative to HEAD.
@@ -41,9 +42,32 @@ type Hunk struct {
 	Kind       ChangeKind
 }
 
-// GitChanges is the file's hunks, sorted by Start and not overlapping.
+// GitChanges is the file's hunks, sorted by Start and not overlapping, and the
+// lines HEAD had where the working file now has fewer or different ones.
 type GitChanges struct {
-	Hunks []Hunk
+	Hunks   []Hunk
+	Removed []Removed
+}
+
+// Removed is a run of lines HEAD had that the working file does not: the whole
+// of a deletion, or the old side of a modification. Before is the file line
+// they would sit above, so a deletion at the end of the file has Before equal
+// to the line count. Hunk indexes the hunk whose marker stands for them.
+//
+// Blocks are sorted by Before; two can share one when a deletion is followed
+// directly by a modification.
+type Removed struct {
+	Before, Hunk int
+	Lines        []string
+}
+
+// removedCount is how many removed lines there are in all.
+func (g *GitChanges) removedCount() int {
+	n := 0
+	for _, r := range g.Removed {
+		n += len(r.Lines)
+	}
+	return n
 }
 
 // At is the change on line n. It is a binary search rather than a per-line
@@ -113,21 +137,42 @@ func isDeletion(k ChangeKind) bool {
 	return k == ChangeRemovedBelow || k == ChangeRemovedAbove
 }
 
-// parseDiff reads `git diff -U0` output and keeps only the hunk headers.
+// parseDiff reads `git diff -U0` output: the hunk headers, and the removed
+// lines under them. Added lines are skipped, since the file itself has them.
 //
-// Content lines are skipped without being held: a minified file's single line
-// can be megabytes, and ReadSlice hands such a line back in buffer-sized pieces
-// rather than growing to fit it. Only a piece that starts a line can be a
-// header, and every header fits in the first piece.
+// Content is never held whole: a minified file's single line can be megabytes,
+// and ReadSlice hands such a line back in buffer-sized pieces rather than
+// growing to fit it. Only a piece that starts a line can be a header, and every
+// header fits in the first piece. A removed line keeps only its first piece,
+// which is more than a screen can show.
 func parseDiff(r io.Reader) GitChanges {
 	var g GitChanges
 	br := bufio.NewReaderSize(r, 4096)
 	atLineStart := true
+	inHunk, newBlock := false, false
+	before := 0
 	for {
 		chunk, err := br.ReadSlice('\n')
-		if atLineStart && bytes.HasPrefix(chunk, []byte("@@ -")) {
-			if h, ok := parseHunkHeader(chunk); ok {
-				g.add(h)
+		if atLineStart {
+			switch {
+			case bytes.HasPrefix(chunk, []byte("@@ -")):
+				var h Hunk
+				h, before, inHunk = parseHunkHeader(chunk)
+				if inHunk {
+					g.add(h)
+					newBlock = true
+				}
+			case inHunk && len(chunk) > 0 && chunk[0] == '-':
+				if newBlock {
+					g.Removed = append(g.Removed, Removed{Before: before, Hunk: len(g.Hunks) - 1})
+					newBlock = false
+				}
+				blk := &g.Removed[len(g.Removed)-1]
+				blk.Lines = append(blk.Lines, removedText(chunk[1:], err == bufio.ErrBufferFull))
+			case inHunk && len(chunk) > 0 && (chunk[0] == '+' || chunk[0] == '\\'):
+				// An added line, or "\ No newline at end of file".
+			default:
+				inHunk = false
 			}
 		}
 		if err == bufio.ErrBufferFull {
@@ -142,33 +187,53 @@ func parseDiff(r io.Reader) GitChanges {
 	return g
 }
 
+// removedText is a removed line's content without its line ending. A partial
+// line is the first piece of an overlong one, cut back to a whole character.
+func removedText(b []byte, partial bool) string {
+	if partial {
+		for i := len(b) - 1; i >= max(len(b)-utf8.UTFMax, 0); i-- {
+			if utf8.RuneStart(b[i]) {
+				if !utf8.FullRune(b[i:]) {
+					b = b[:i]
+				}
+				break
+			}
+		}
+	} else {
+		b = bytes.TrimSuffix(b, []byte("\n"))
+		b = bytes.TrimSuffix(b, []byte("\r"))
+	}
+	return string(b)
+}
+
 // parseHunkHeader reads `@@ -a[,b] +c[,d] @@`. A missing count means one line.
-func parseHunkHeader(line []byte) (Hunk, bool) {
+// before is the file line the hunk's removed lines would sit above.
+func parseHunkHeader(line []byte) (h Hunk, before int, ok bool) {
 	rest := line[len("@@ -"):]
 	_, oldCount, rest, ok := parseRange(rest)
 	if !ok || len(rest) == 0 || rest[0] != ' ' {
-		return Hunk{}, false
+		return Hunk{}, 0, false
 	}
 	rest = rest[1:]
 	if len(rest) == 0 || rest[0] != '+' {
-		return Hunk{}, false
+		return Hunk{}, 0, false
 	}
 	newStart, newCount, _, ok := parseRange(rest[1:])
 	if !ok {
-		return Hunk{}, false
+		return Hunk{}, 0, false
 	}
 
 	switch {
 	case oldCount == 0:
-		return Hunk{Start: newStart - 1, End: newStart - 1 + newCount, Kind: ChangeAdded}, newCount > 0
+		return Hunk{Start: newStart - 1, End: newStart - 1 + newCount, Kind: ChangeAdded}, 0, newCount > 0
 	case newCount == 0:
 		// newStart is the line the deletion follows, zero when it was at the top.
 		if newStart == 0 {
-			return Hunk{Start: 0, End: 1, Kind: ChangeRemovedAbove}, true
+			return Hunk{Start: 0, End: 1, Kind: ChangeRemovedAbove}, 0, true
 		}
-		return Hunk{Start: newStart - 1, End: newStart, Kind: ChangeRemovedBelow}, true
+		return Hunk{Start: newStart - 1, End: newStart, Kind: ChangeRemovedBelow}, newStart, true
 	default:
-		return Hunk{Start: newStart - 1, End: newStart - 1 + newCount, Kind: ChangeModified}, true
+		return Hunk{Start: newStart - 1, End: newStart - 1 + newCount, Kind: ChangeModified}, newStart - 1, true
 	}
 }
 

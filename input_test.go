@@ -21,7 +21,7 @@ func TestHelpIsModal(t *testing.T) {
 	swallowed := []term.Event{
 		keyRune('y'), keyRune('a'), keyRune('d'), keyRune('x'),
 		keyRune('l'), keyRune('s'), keyRune('h'), keyRune('/'),
-		keyRune('n'), keyRune('N'), keyRune('H'),
+		keyRune('n'), keyRune('N'), keyRune('H'), keyRune('S'),
 	}
 	for _, ev := range swallowed {
 		if act := Decode(ev, ModeHelp); act.Kind != ActNone {
@@ -83,6 +83,22 @@ func TestTypingInSearchDoesNotTriggerCommands(t *testing.T) {
 		act := Decode(keyRune(r), ModeSearch)
 		if act.Kind != ActPromptKey || act.Key != PromptInsert || act.Rune != r {
 			t.Errorf("%q in search decoded to %+v, want an insert", r, act)
+		}
+	}
+}
+
+func TestSTogglesDeletedLinesAndDOrEscDeselects(t *testing.T) {
+	for _, c := range []struct {
+		ev   term.Event
+		kind ActionKind
+	}{
+		{keyRune('s'), ActToggleDeleted},
+		{keyRune('S'), ActToggleScrollbar},
+		{keyRune('d'), ActDeselect},
+		{key(term.KeyEscape), ActDeselect},
+	} {
+		if act := Decode(c.ev, ModeNormal); act.Kind != c.kind {
+			t.Errorf("event %v decoded to %d, want %d", c.ev, act.Kind, c.kind)
 		}
 	}
 }

@@ -58,6 +58,9 @@ type App struct {
 	changeIdx    int
 	changeYOff   int
 	changeJumped bool
+	// ShowDeleted draws the lines HEAD removed as rows of their own; see rows.go.
+	ShowDeleted bool
+	removedEnd  []int
 
 	TabWidth      int
 	ShowLineNum   bool
@@ -98,6 +101,7 @@ func NewApp(fb *FileBuffer, opts Options) *App {
 		ShowScrollbar:  opts.Scrollbar,
 		Highlight:      opts.Highlight,
 		ShowGitChanges: opts.GitChanges,
+		ShowDeleted:    opts.Deleted,
 		Needle:         opts.Search,
 	}
 }
@@ -163,8 +167,19 @@ func (a *App) ContentHeight() int {
 }
 
 // VisibleRange is the half-open range of line indices currently on screen.
+// Removed lines drawn between them are not counted.
 func (a *App) VisibleRange() (int, int) {
-	return a.YOff, min(a.YOff+a.ContentHeight(), a.TotalLines)
+	if !a.phantomsShown() {
+		return a.YOff, min(a.YOff+a.ContentHeight(), a.TotalLines)
+	}
+	from := a.topLine()
+	last, blk, _ := a.rowAt(a.YOff + a.ContentHeight() - 1)
+	to := last
+	if blk < 0 {
+		to = last + 1
+	}
+	to = min(to, a.TotalLines)
+	return min(from, to), to
 }
 
 // LineTable rebuilds the scratch table for line n and returns the line with it.
@@ -181,7 +196,7 @@ func (a *App) LineWidth(n int) Col {
 }
 
 func (a *App) clampY() {
-	maxOffset := max(a.TotalLines-a.ContentHeight(), 0)
+	maxOffset := max(a.TotalRows()-a.ContentHeight(), 0)
 	a.YOff = min(max(a.YOff, 0), maxOffset)
 }
 
@@ -192,10 +207,16 @@ func (a *App) clampX() {
 		a.XOff = 0
 		return
 	}
-	from, to := a.VisibleRange()
 	var widest Col
-	for n := from; n < to; n++ {
-		if w := a.LineWidth(n); w > widest {
+	end := min(a.YOff+a.ContentHeight(), a.TotalRows())
+	for row := a.YOff; row < end; row++ {
+		var t *ClusterTable
+		if line, blk, idx := a.rowAt(row); blk >= 0 {
+			_, t = a.PhantomTable(blk, idx)
+		} else {
+			_, t = a.LineTable(line)
+		}
+		if w := t.Width(); w > widest {
 			widest = w
 		}
 	}
@@ -240,6 +261,7 @@ const (
 	ActToggleGitChanges
 	ActNextChange
 	ActPrevChange
+	ActToggleDeleted
 	ActOpenHelp
 	ActCloseHelp
 	ActOpenSearch
@@ -302,7 +324,7 @@ func (a *App) Apply(act Action) {
 			a.HelpOff = a.helpMaxOffset()
 			return
 		}
-		a.YOff = a.TotalLines
+		a.YOff = a.TotalRows()
 		a.clampY()
 
 	case ActResetX:
@@ -348,8 +370,14 @@ func (a *App) Apply(act Action) {
 		}
 
 	case ActToggleGitChanges:
-		a.ShowGitChanges = !a.ShowGitChanges
+		a.remap(func() {
+			a.ShowGitChanges = !a.ShowGitChanges
+			a.changeJumped = false
+		})
 		a.RequestGitChanges()
+
+	case ActToggleDeleted:
+		a.toggleDeleted()
 
 	case ActNextChange:
 		a.jumpChange(1)
@@ -574,8 +602,9 @@ func (a *App) runSearch() {
 	}
 	// Resume from where the user is looking rather than always from the top.
 	a.MatchIdx = 0
+	top := a.topLine()
 	for i, m := range a.Matches {
-		if m.Line >= a.YOff {
+		if m.Line >= top {
 			a.MatchIdx = i
 			break
 		}
@@ -604,7 +633,11 @@ func (a *App) selectMatch() {
 
 // ScrollToShow puts row a third of the way down the pane, so there is context
 // on both sides of it.
-func (a *App) ScrollToShow(row int) {
+func (a *App) ScrollToShow(line int) {
+	a.scrollToShowRow(a.lineRow(line))
+}
+
+func (a *App) scrollToShowRow(row int) {
 	a.YOff = max(row-a.ContentHeight()/3, 0)
 	a.clampY()
 }
@@ -624,8 +657,9 @@ func (a *App) mouseDown(act Action) {
 		return
 	}
 
-	row := a.YOff + int(act.Y)
-	if row >= a.TotalLines {
+	// A removed line is not in the file, so there is nothing there to select.
+	row, blk, _ := a.rowAt(a.YOff + int(act.Y))
+	if blk >= 0 || row >= a.TotalLines {
 		return
 	}
 
@@ -691,7 +725,21 @@ func (a *App) mouseDrag(act Action) {
 		y = int(l.ContentH) - 1
 	}
 
-	row := max(min(a.YOff+y, a.TotalLines-1), 0)
+	if a.TotalLines == 0 {
+		return
+	}
+	row, blk, _ := a.rowAt(max(min(a.YOff+y, a.TotalRows()-1), 0))
+	if blk >= 0 {
+		// Dragged over removed lines: select up to the file line below them, or
+		// to the end of the file when they were removed from its end.
+		p := Pos{row, 0}
+		if row >= a.TotalLines {
+			p = Pos{a.TotalLines - 1, a.LineWidth(a.TotalLines - 1)}
+		}
+		a.Sel.ExtendRange(p, p)
+		return
+	}
+	row = min(row, a.TotalLines-1)
 	x := max(min(int(act.X)-int(l.ContentX), int(l.ContentW)), 0)
 	a.extendSelect(a.Sel.Mode, Pos{row, a.XOff + Col(x)})
 }
@@ -699,10 +747,11 @@ func (a *App) mouseDrag(act Action) {
 // scrollToRow maps a screen row in the scrollbar track to a scroll offset.
 func (a *App) scrollToRow(y int) {
 	h := a.ContentHeight()
-	if a.TotalLines <= h || h <= 1 {
+	total := a.TotalRows()
+	if total <= h || h <= 1 {
 		return
 	}
-	a.YOff = y * (a.TotalLines - h) / (h - 1)
+	a.YOff = y * (total - h) / (h - 1)
 	a.clampY()
 }
 
@@ -755,9 +804,41 @@ func (a *App) RequestGitChanges() {
 
 // InstallGitChanges accepts the diff.
 func (a *App) InstallGitChanges(c GitChanges) {
-	a.git = c
-	a.gitLoaded = true
-	a.changeJumped = false
+	a.remap(func() {
+		a.git = c
+		a.buildRemovedEnd()
+		a.gitLoaded = true
+		a.changeJumped = false
+	})
+}
+
+// toggleDeleted shows or hides removed lines, keeping the view where it is.
+//
+// It goes by what is on screen rather than by the setting: with the setting on
+// but nothing drawn, the key explains why instead of silently turning it off.
+func (a *App) toggleDeleted() {
+	if a.phantomsShown() {
+		a.remap(func() { a.ShowDeleted = false })
+		return
+	}
+	switch {
+	case !a.ShowGitChanges:
+		a.StatusMsg = "git changes are off (c to show)"
+	case !a.gitLoaded:
+		a.StatusMsg = "git changes are still loading"
+	case len(a.git.Removed) == 0:
+		a.StatusMsg = "no deleted lines"
+	default:
+		a.remap(func() { a.ShowDeleted = true })
+	}
+}
+
+// CurrentHunk is the hunk the last jump landed on, while markers are showing.
+func (a *App) CurrentHunk() (Hunk, int, bool) {
+	if !a.changeJumped || !a.hasGitMarkers() || a.changeIdx >= len(a.git.Hunks) {
+		return Hunk{}, -1, false
+	}
+	return a.git.Hunks[a.changeIdx], a.changeIdx, true
 }
 
 func (a *App) hasGitMarkers() bool {
@@ -795,18 +876,30 @@ func (a *App) jumpChange(delta int) {
 	}
 
 	var i int
+	anchor, _, _ := a.rowAt(a.YOff + a.ContentHeight()/3)
 	switch {
 	case a.changeJumped && a.YOff == a.changeYOff:
 		i = (a.changeIdx + delta + n) % n
 	case delta > 0:
-		i = a.git.Next(a.YOff + a.ContentHeight()/3)
+		i = a.git.Next(anchor)
 	default:
-		i = a.git.Prev(a.YOff + a.ContentHeight()/3)
+		i = a.git.Prev(anchor)
 	}
 
-	a.ScrollToShow(a.git.Hunks[i].Start)
+	// Land on whichever comes first, the hunk's lines or the removed lines drawn
+	// with it, so a modification shows its old side too.
+	h := a.git.Hunks[i]
+	target := a.lineRow(h.Start)
+	blk := a.hunkBlock(i)
+	if blk >= 0 && a.phantomsShown() {
+		target = min(target, a.blockFirstRow(blk))
+	}
+	a.scrollToShowRow(target)
 	a.changeIdx, a.changeYOff, a.changeJumped = i, a.YOff, true
 	a.StatusMsg = fmt.Sprintf("change %d/%d", i+1, n)
+	if blk >= 0 && !a.phantomsShown() {
+		a.StatusMsg += fmt.Sprintf(" · %d removed (s to show)", len(a.git.Removed[blk].Lines))
+	}
 }
 
 // FileName is the base name shown in the status bar.

@@ -67,7 +67,7 @@ func decodeNormalKey(ev term.Event) Action {
 
 	case ev.IsRune('a'):
 		return Action{Kind: ActSelectAll}
-	case ev.IsRune('d'):
+	case ev.IsRune('d'), ev.IsKey(term.KeyEscape):
 		return Action{Kind: ActDeselect}
 	case ev.IsRune('y'):
 		return Action{Kind: ActCopy}
@@ -78,7 +78,7 @@ func decodeNormalKey(ev term.Event) Action {
 
 	case ev.IsRune('l'):
 		return Action{Kind: ActToggleLineNumbers}
-	case ev.IsRune('s'):
+	case ev.IsRune('S'):
 		return Action{Kind: ActToggleScrollbar}
 	case ev.IsRune('h'):
 		return Action{Kind: ActToggleHighlight}
@@ -88,6 +88,8 @@ func decodeNormalKey(ev term.Event) Action {
 		return Action{Kind: ActNextChange}
 	case ev.IsRune('['):
 		return Action{Kind: ActPrevChange}
+	case ev.IsRune('s'):
+		return Action{Kind: ActToggleDeleted}
 
 	case ev.IsKey(term.KeyF1):
 		return Action{Kind: ActOpenHelp}

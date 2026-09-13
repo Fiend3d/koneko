@@ -23,6 +23,7 @@ type Options struct {
 	Scrollbar   bool
 	Highlight   bool
 	GitChanges  bool
+	Deleted     bool
 	Search      string
 	Select      string
 	Theme       string
@@ -160,6 +161,7 @@ func parseFlags() (Options, bool) {
 	noScrollbar := flag.Bool("no-scrollbar", false, "hide scrollbar")
 	noHighlight := flag.Bool("no-highlight", false, "disable syntax highlighting")
 	noGit := flag.Bool("no-git", false, "disable git change markers")
+	noDeleted := flag.Bool("no-deleted-lines", false, "start with deleted lines hidden")
 	flag.StringVar(&o.Search, "search", "", "search string")
 	flag.StringVar(&o.Select, "select", "", "selection range (e.g. 1:7-1:10)")
 	flag.StringVar(&o.Theme, "theme", defaultTheme,
@@ -178,6 +180,7 @@ func parseFlags() (Options, bool) {
 	o.Scrollbar = !*noScrollbar
 	o.Highlight = !*noHighlight
 	o.GitChanges = !*noGit
+	o.Deleted = !*noDeleted
 
 	if flag.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "Usage: koneko [options] <file>\n\n")

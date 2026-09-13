@@ -19,17 +19,41 @@ import (
 // terminal, and TestBackend does not model that, so whatever it holds there is
 // not on screen either way.
 func TestScrollingLeavesNoStaleCells(t *testing.T) {
+	checkScrollingLeavesNoStaleCells(t, func(*App) {})
+}
+
+// Removed lines drawn between the file's own change which line each row shows,
+// and are drawn from a different string than the line they displace.
+func TestScrollingWithRemovedLinesLeavesNoStaleCells(t *testing.T) {
+	checkScrollingLeavesNoStaleCells(t, func(a *App) {
+		a.ShowGitChanges = true
+		a.InstallGitChanges(GitChanges{
+			Hunks: []Hunk{{0, 1, ChangeRemovedAbove}, {10, 12, ChangeModified}, {30, 31, ChangeRemovedBelow}},
+			Removed: []Removed{
+				{0, 0, []string{"removed at the top 🎉"}},
+				{10, 1, []string{"old 日本語 line", "	another old one"}},
+				{31, 2, []string{"नमस्ते दुनिया", "gone"}},
+			},
+		})
+		a.Apply(Action{Kind: ActToggleDeleted})
+	})
+}
+
+func checkScrollingLeavesNoStaleCells(t *testing.T, setup func(*App)) {
+	t.Helper()
 	const w, h = 100, 24
 
 	a := testApp(t, "testdata/unicode.txt", w, h)
+	setup(a)
 	backend := catatui.NewTestBackend(w, h)
 	terminal, err := catatui.NewTerminal(backend)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := testApp(t, "testdata/unicode.txt", w, h)
+	setup(want)
 
-	for step := 0; step < a.TotalLines; step++ {
+	for step := 0; step < a.TotalRows(); step++ {
 		if err := terminal.Draw(func(f *catatui.Frame) { draw(f, a) }); err != nil {
 			t.Fatal(err)
 		}

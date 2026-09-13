@@ -83,7 +83,12 @@ theme gets a proper selection background.
   a **green** bar for added lines, **yellow** for modified, and a **red** `▁`
   where lines were deleted.
 - <kbd>]</kbd> and <kbd>[</kbd> jump to the next and previous change, and
-  <kbd>c</kbd> toggles the markers.
+  <kbd>c</kbd> toggles the markers. The change a jump lands on is tinted in its
+  marker colour.
+- The lines `HEAD` had are shown inline, on red rows without line
+  numbers: whole deletions, and the old side of modified lines above the new.
+  They are not part of the file, so they cannot be selected or copied.
+  <kbd>s</kbd> hides and shows them, or start with `-no-deleted-lines`.
 - The diff runs in the background, so a file never waits on git to open.
 
 ### Built for integration
@@ -130,6 +135,7 @@ koneko [OPTIONS] <FILE>
 | `-no-scrollbar` | Start with the scrollbar hidden |
 | `-no-highlight` | Start with syntax highlighting off |
 | `-no-git` | Don't show git change markers |
+| `-no-deleted-lines` | Start with deleted lines hidden |
 | `-search=TEXT` | Open with `TEXT` searched and the first match shown |
 | `-select=L:C-L:C` | Open with a range selected (1-based line and character) |
 | `-v`, `-version` | Print the version and exit |
@@ -159,7 +165,7 @@ koneko -select=120:5-124:1 server.log
 | Key | Action |
 |---|---|
 | <kbd>a</kbd> | Select all |
-| <kbd>d</kbd> | Deselect |
+| <kbd>d</kbd> / <kbd>Esc</kbd> | Deselect |
 | <kbd>y</kbd> | Copy selection |
 | <kbd>r</kbd> | Copy `path:line` reference |
 | <kbd>x</kbd> | Extend selection to full lines |
@@ -177,7 +183,7 @@ koneko -select=120:5-124:1 server.log
 | Key | Action |
 |---|---|
 | <kbd>l</kbd> | Toggle line numbers |
-| <kbd>s</kbd> | Toggle scrollbar |
+| <kbd>S</kbd> | Toggle scrollbar |
 | <kbd>h</kbd> | Toggle syntax highlighting |
 
 #### Git
@@ -186,6 +192,7 @@ koneko -select=120:5-124:1 server.log
 | <kbd>]</kbd> | Next change |
 | <kbd>[</kbd> | Previous change |
 | <kbd>c</kbd> | Toggle change markers |
+| <kbd>s</kbd> | Toggle deleted lines |
 
 #### Mouse
 | Input | Action |
