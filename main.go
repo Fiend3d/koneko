@@ -9,8 +9,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/Fiend3d/catatui"
 	"github.com/Fiend3d/catatui/term"
@@ -71,6 +73,17 @@ func run() error {
 		return err
 	}
 	defer restore()
+
+	// Save the shell's title and restore it when the viewer exits. Strip control
+	// characters so a file name cannot become part of the terminal protocol.
+	title := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, filepath.Clean(opts.File)+" - koneko")
+	fmt.Fprintf(os.Stdout, "\x1b[22;0t\x1b]0;%s\x1b\\", title)
+	defer fmt.Fprint(os.Stdout, "\x1b[23;0t")
 
 	events := term.NewEventReader(os.Stdin, os.Stdout)
 	defer events.Close()
