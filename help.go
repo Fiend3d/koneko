@@ -8,7 +8,7 @@ import (
 	"github.com/Fiend3d/catatui"
 )
 
-const version = "2.2.1"
+const version = "2.2.2"
 
 // helpLines is the overlay's text. A line starting with three spaces is a
 // binding — the key, two or more spaces, then its description — and anything
