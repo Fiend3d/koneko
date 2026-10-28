@@ -115,7 +115,10 @@ koneko ships with [**mc**](https://github.com/Fiend3d/mc) and is its default
 <kbd>F3</kbd> viewer, so installing mc gets you koneko too.
 
 ### From source
-Requires Go 1.27 or newer.
+Requires Go 1.27.3 or newer — `go.mod` pins that floor because 1.27.1 and
+1.27.2 have known vulnerabilities in the standard library. With
+`GOTOOLCHAIN=auto`, which is the default, the newer toolchain is fetched
+automatically if your local one is older.
 
 ```
 git clone https://github.com/Fiend3d/koneko
