@@ -1,15 +1,24 @@
 // Random access to a file's lines.
 //
-// The file is memory-mapped and indexed once into a table of line offsets. A
-// line is then a slice of the mapping — no syscall, no allocation, no cache —
-// which is what makes scrolling and searching a 10 MB file cost nothing. The
-// bubbletea original issued a ReadAt and allocated a string per line, and had
-// to keep a single-entry cache to make the view bearable.
+// The file is read once into a private buffer and indexed into a table of line
+// offsets. A line is then a slice of that buffer — no syscall, no allocation,
+// no cache — which is what makes scrolling and searching a 10 MB file cost
+// nothing. The bubbletea original issued a ReadAt and allocated a string per
+// line, and had to keep a single-entry cache to make the view bearable.
+//
+// The buffer is a snapshot, not a window onto the file. Mapping the file
+// instead was cheaper to open and cost two things that turned out to matter:
+// on Windows a mapped section blocks every other writer (an editor, git, a
+// coding agent) with "the file is being used by another process", and a write
+// that does get through changes the bytes under a line table built from the
+// old layout, which garbles the text. Reading the file once and closing the
+// handle removes both, and the only price is open time and one buffer the size
+// of the file.
 package main
 
 import (
 	"bytes"
-	"os"
+	"io"
 	"strings"
 	"unsafe"
 )
@@ -18,43 +27,64 @@ import (
 // front, so indexing a large file does not repeatedly grow and copy the slice.
 const avgLineGuess = 32
 
-// FileBuffer holds a mapped file and the offset of every line start.
+// FileBuffer holds a snapshot of a file and the offset of every line start.
 //
 // offsets has one entry per line plus a terminating entry at the end of the
 // data, so line n spans [offsets[n], offsets[n+1]).
 type FileBuffer struct {
-	f       *os.File
 	data    []byte
-	mapping mapping
 	offsets []int64
 	path    string
+	ident   fileIdent
 }
 
-// OpenFileBuffer maps path and indexes its line starts.
+// OpenFileBuffer reads path and indexes its line starts. The file is closed
+// before OpenFileBuffer returns, so koneko holds no lock on it for the rest of
+// the session.
 func OpenFileBuffer(path string) (*FileBuffer, error) {
-	f, err := os.Open(path)
+	data, ident, err := readWholeFile(path)
 	if err != nil {
 		return nil, err
 	}
-	info, err := f.Stat()
-	if err != nil {
-		f.Close()
-		return nil, err
-	}
-	size := info.Size()
-
-	data, m, err := mapFile(f, size)
-	if err != nil {
-		f.Close()
-		return nil, err
-	}
-
-	fb := &FileBuffer{f: f, data: data, mapping: m, path: path}
+	fb := &FileBuffer{data: data, path: path, ident: ident}
 	fb.index()
 	return fb, nil
 }
 
-// index builds the offset table with one pass of memchr over the mapping.
+// Ident is the file's size and modification time as they were when the snapshot
+// was taken, which is what FileWatcher compares against to see whether the file
+// has moved on.
+func (fb *FileBuffer) Ident() fileIdent { return fb.ident }
+
+// readWholeFile reads path into a single buffer. The size from Stat sizes the
+// buffer so the read is one pass; a file that reports no size (a pipe, a
+// device) falls back to reading until EOF.
+func readWholeFile(path string) ([]byte, fileIdent, error) {
+	f, err := openForRead(path)
+	if err != nil {
+		return nil, fileIdent{}, err
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fileIdent{}, err
+	}
+	ident := fileIdent{mod: info.ModTime(), size: info.Size()}
+
+	if ident.size <= 0 {
+		data, err := io.ReadAll(f)
+		return data, ident, err
+	}
+
+	data := make([]byte, ident.size)
+	if _, err := io.ReadFull(f, data); err != nil {
+		return nil, fileIdent{}, err
+	}
+	return data, ident, nil
+}
+
+// index builds the offset table with one pass of memchr over the buffer.
 func (fb *FileBuffer) index() {
 	n := int64(len(fb.data))
 	fb.offsets = make([]int64, 1, n/avgLineGuess+16)
@@ -87,7 +117,7 @@ func (fb *FileBuffer) LineCount() int {
 
 // Line returns line n with its line terminator stripped.
 //
-// The result aliases the mapping and stays valid for the life of the
+// The result aliases the buffer and stays valid for the life of the
 // FileBuffer. It must not be modified, and it must not outlive Close.
 func (fb *FileBuffer) Line(n int) string {
 	if n < 0 || n >= len(fb.offsets)-1 {
@@ -127,7 +157,7 @@ func (fb *FileBuffer) ByteSpan(from, to int) int {
 	return int(fb.offsets[to] - fb.offsets[from])
 }
 
-// All returns the whole mapping, for a scan that wants to run over the file in
+// All returns the whole buffer, for a scan that wants to run over the file in
 // one pass rather than line by line.
 func (fb *FileBuffer) All() []byte { return fb.data }
 
@@ -174,17 +204,16 @@ func (fb *FileBuffer) Text(from, to int) string {
 	return strings.ReplaceAll(s, "\r", "\n")
 }
 
+// Close releases the snapshot. Nothing handed out by Line, Bytes or All is
+// meant to outlive it.
 func (fb *FileBuffer) Close() error {
-	err := fb.mapping.close()
 	fb.data = nil
-	if cerr := fb.f.Close(); err == nil {
-		err = cerr
-	}
-	return err
+	fb.offsets = nil
+	return nil
 }
 
 // bytesToString views b as a string without copying. Safe here because the
-// mapping is read-only and outlives every string handed out of it.
+// buffer is never written to and outlives every string handed out of it.
 func bytesToString(b []byte) string {
 	if len(b) == 0 {
 		return ""

@@ -267,14 +267,22 @@ func parseInt(b []byte) (int, []byte, bool) {
 	return n, b[i:], true
 }
 
+// gitResult is one finished diff, tagged with the generation of the document it
+// describes. A reload bumps the generation, and a diff of a document that no
+// longer exists is dropped rather than installed.
+type gitResult struct {
+	changes GitChanges
+	gen     uint64
+}
+
 // loadGitChanges diffs path against HEAD and sends the result to out exactly
 // once. Any failure sends an empty result: a file outside a repository is not
 // an error worth a message.
 //
 // out must have room for the send, so this goroutine can never block on a main
 // loop that has already quit. Cancelling ctx kills git.
-func loadGitChanges(ctx context.Context, path string, out chan<- GitChanges) {
-	out <- diffAgainstHead(ctx, path)
+func loadGitChanges(ctx context.Context, path string, gen uint64, out chan<- gitResult) {
+	out <- gitResult{changes: diffAgainstHead(ctx, path), gen: gen}
 }
 
 func diffAgainstHead(ctx context.Context, path string) GitChanges {

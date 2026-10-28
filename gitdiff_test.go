@@ -162,9 +162,9 @@ func TestLoadGitChangesDiffsAWorkingFileAgainstHead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out := make(chan GitChanges, 1)
-	loadGitChanges(context.Background(), path, out)
-	g := <-out
+	out := make(chan gitResult, 1)
+	loadGitChanges(context.Background(), path, 0, out)
+	g := (<-out).changes
 	want := []Hunk{{1, 2, ChangeModified}, {2, 3, ChangeRemovedBelow}, {4, 5, ChangeAdded}}
 	if !reflect.DeepEqual(g.Hunks, want) {
 		t.Errorf("got %v, want %v", g.Hunks, want)
@@ -181,9 +181,9 @@ func TestLoadGitChangesOutsideARepositoryIsEmpty(t *testing.T) {
 	if err := os.WriteFile(path, []byte("a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out := make(chan GitChanges, 1)
-	loadGitChanges(context.Background(), path, out)
-	if got := (<-out).Hunks; len(got) != 0 {
+	out := make(chan gitResult, 1)
+	loadGitChanges(context.Background(), path, 0, out)
+	if got := (<-out).changes.Hunks; len(got) != 0 {
 		t.Errorf("got %v, want no hunks", got)
 	}
 }
@@ -316,7 +316,7 @@ func TestJumpingReportsWhenThereIsNothingToJumpTo(t *testing.T) {
 	}
 
 	loads := 0
-	a.AttachGitLoader(func() { loads++ })
+	a.AttachGitLoader(func(uint64) { loads++ })
 	a.Apply(Action{Kind: ActToggleGitChanges})
 	a.Apply(Action{Kind: ActToggleGitChanges})
 	a.Apply(Action{Kind: ActToggleGitChanges})

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -134,6 +136,120 @@ func TestAFileWithNoTrailingNewlineKeepsItsLastLine(t *testing.T) {
 	}
 	if got := fb.Line(2); got != "c" {
 		t.Errorf("Line(2) = %q, want %q", got, "c")
+	}
+}
+
+// TestOpenDoesNotLockTheFile is the reason koneko reads the file instead of
+// mapping it: on Windows a mapped section makes every other writer fail —
+// os.WriteFile with "a user-mapped section open", rename and delete with "the
+// file is being used by another process". A viewer must not hold a file its
+// user is editing somewhere else.
+func TestOpenDoesNotLockTheFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "locked.txt")
+	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fb, err := OpenFileBuffer(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fb.Close()
+
+	if err := os.WriteFile(path, []byte("rewritten\nby an editor\n"), 0o644); err != nil {
+		t.Fatalf("overwriting an open file failed: %v", err)
+	}
+	if err := os.Rename(path, path+".moved"); err != nil {
+		t.Fatalf("renaming an open file failed: %v", err)
+	}
+	if err := os.Remove(path + ".moved"); err != nil {
+		t.Fatalf("deleting an open file failed: %v", err)
+	}
+}
+
+// TestExternalChangesDoNotCorruptTheView is the other half: a write that does
+// get through must not be seen through a line table built from the old byte
+// layout. The snapshot keeps showing the file as it was when it opened.
+func TestExternalChangesDoNotCorruptTheView(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "changed.txt")
+	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fb, err := OpenFileBuffer(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fb.Close()
+
+	// Longer, shorter, and a different number of lines: every case that moves
+	// the offsets a mapped view would still be reading through.
+	for _, replacement := range []string{
+		"a much longer line than before, which shifts every offset after it\n",
+		"x\n",
+		"1\n2\n3\n4\n5\n6\n7\n8\n",
+		"",
+	} {
+		if err := os.WriteFile(path, []byte(replacement), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got := fb.LineCount(); got != 3 {
+			t.Fatalf("LineCount = %d after an external write, want 3", got)
+		}
+		for i, want := range []string{"one", "two", "three"} {
+			if got := fb.Line(i); got != want {
+				t.Fatalf("Line(%d) = %q, want %q", i, got, want)
+			}
+		}
+		if got := fb.Text(0, 3); got != "one\ntwo\nthree\n" {
+			t.Errorf("Text = %q, want the original file", got)
+		}
+	}
+}
+
+// TestOpenForReadDoesNotBlockRenameOrDelete pins the share mode the file is
+// opened with. os.Open asks for FILE_SHARE_READ | FILE_SHARE_WRITE and never
+// FILE_SHARE_DELETE, and on Windows that is enough to make a rename-over save
+// fail with "the process cannot access the file because it is being used by
+// another process" for as long as the handle lives.
+func TestOpenForReadDoesNotBlockRenameOrDelete(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "shared.txt")
+	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := openForRead(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	// Hold it the way a reload does: stat, read it all, still open afterwards.
+	info, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadFull(f, make([]byte, info.Size())); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(path, []byte("rewritten while open\n"), 0o644); err != nil {
+		t.Fatalf("overwriting the open file failed: %v", err)
+	}
+	if err := os.Rename(path, path+".moved"); err != nil {
+		t.Fatalf("renaming the open file failed: %v", err)
+	}
+	if err := os.Remove(path + ".moved"); err != nil {
+		t.Fatalf("deleting the renamed file failed: %v", err)
+	}
+}
+
+func TestMissingFileReportsErrNotExist(t *testing.T) {
+	_, err := OpenFileBuffer(filepath.Join(t.TempDir(), "absent.txt"))
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("opening a missing file gave %v, want an os.ErrNotExist", err)
 	}
 }
 

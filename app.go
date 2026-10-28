@@ -50,7 +50,11 @@ type App struct {
 	git            GitChanges
 	gitLoaded      bool
 	gitRequested   bool
-	gitLoad        func()
+	gitLoad        func(uint64)
+	// gitGen names the document the diff was asked for. A reload bumps it, so a
+	// diff of the file that was just replaced can be recognised and dropped
+	// instead of painted over the new one.
+	gitGen uint64
 	// changeIdx is the hunk the last jump landed on, and changeYOff where that
 	// jump left the view. While the view has not moved, the next jump steps
 	// from the hunk rather than from the screen, which near the end of the file
@@ -109,8 +113,12 @@ func NewApp(fb *FileBuffer, opts Options) *App {
 func (a *App) AttachHighlighter(h *Highlighter) { a.highlighter = h }
 
 // AttachGitLoader sets what RequestGitChanges calls to start the diff. It must
-// not block: the result comes back through InstallGitChanges.
-func (a *App) AttachGitLoader(load func()) { a.gitLoad = load }
+// not block: the result comes back through InstallGitChanges. The generation it
+// is handed is the one the result must come back with.
+func (a *App) AttachGitLoader(load func(uint64)) { a.gitLoad = load }
+
+// GitGen is the generation of the document currently in view.
+func (a *App) GitGen() uint64 { return a.gitGen }
 
 // Layout is where each part of the screen goes, in cells.
 type Layout struct {
@@ -799,7 +807,7 @@ func (a *App) RequestGitChanges() {
 		return
 	}
 	a.gitRequested = true
-	a.gitLoad()
+	a.gitLoad(a.gitGen)
 }
 
 // InstallGitChanges accepts the diff.
@@ -900,6 +908,98 @@ func (a *App) jumpChange(delta int) {
 	if blk >= 0 && !a.phantomsShown() {
 		a.StatusMsg += fmt.Sprintf(" · %d removed (s to show)", len(a.git.Removed[blk].Lines))
 	}
+}
+
+// --- Reload ----------------------------------------------------------------
+
+// Reload swaps in a fresh snapshot of the same file, taken by FileWatcher after
+// something else wrote it.
+//
+// The rule is to keep the reader's place and throw away everything derived from
+// the bytes that are gone. Patching the line table, the highlight runs or the
+// diff in place is how a viewer ends up showing a file that never existed; a
+// reload is a fresh start that happens to begin where the reader was.
+func (a *App) Reload(fb *FileBuffer) {
+	// Measured in the document being replaced, before any of it is reset.
+	top := a.topLine()
+	before := a.TotalLines
+
+	// The old snapshot needs no closing: it holds no handle, and anything still
+	// aliasing its bytes keeps them alive.
+	a.fb = fb
+	a.TotalLines = fb.LineCount()
+
+	// The diff describes a file that no longer exists, and the removed lines
+	// drawn as rows came with it. That is why the anchor above is a line: with
+	// the phantoms gone, rows and lines are the same count again.
+	a.git = GitChanges{}
+	a.removedEnd = nil
+	a.gitLoaded, a.gitRequested, a.changeJumped = false, false, false
+	a.gitGen++
+
+	// Runs are byte ranges of the old text. Bumping the generation discards
+	// whatever the worker is still tokenising as well as what it has finished.
+	a.Hl.Clear()
+	a.Gen++
+	a.hlPending = false
+
+	a.StatusMsg = "reloaded"
+	if delta := a.TotalLines - before; delta != 0 {
+		a.StatusMsg = fmt.Sprintf("reloaded · %+d lines", delta)
+	}
+
+	// Stay on the line that was at the top, clamped to the file there is now.
+	a.YOff = min(top, max(a.TotalLines-1, 0))
+	a.clampY()
+	a.clampX()
+	a.reloadSelection()
+
+	// Last, so a needle the new text no longer contains reports that instead of
+	// the reload that made it vanish.
+	if a.Needle != "" {
+		a.runSearch()
+	}
+
+	a.RequestGitChanges()
+}
+
+// reloadSelection keeps the selection when the new file still has those lines,
+// and drops it when it does not. A drag in progress is dropped outright: its
+// anchor is a position in the document that was just replaced.
+func (a *App) reloadSelection() {
+	if !a.Sel.IsVisible() {
+		return
+	}
+	if a.Sel.Selecting || a.TotalLines == 0 {
+		a.Sel.Clear()
+		return
+	}
+
+	clampStart := func(p Pos) Pos {
+		if p.Row >= a.TotalLines {
+			p.Row, p.Col = a.TotalLines-1, 0
+		}
+		if w := a.LineWidth(p.Row); p.Col > w {
+			p.Col = w
+		}
+		return p
+	}
+	clampEnd := func(p Pos) Pos {
+		if p.Row >= a.TotalLines {
+			p.Row, p.Col = a.TotalLines-1, a.LineWidth(a.TotalLines-1)
+		}
+		if w := a.LineWidth(p.Row); p.Col > w {
+			p.Col = w
+		}
+		return p
+	}
+
+	start, end := clampStart(a.Sel.Start), clampEnd(a.Sel.End)
+	if start == end {
+		a.Sel.Clear()
+		return
+	}
+	a.Sel.Start, a.Sel.End = start, end
 }
 
 // FileName is the base name shown in the status bar.

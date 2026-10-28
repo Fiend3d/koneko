@@ -8,7 +8,7 @@ import (
 	"github.com/Fiend3d/catatui"
 )
 
-const version = "2.2.2"
+const version = "2.3.0"
 
 // helpLines is the overlay's text. A line starting with three spaces is a
 // binding — the key, two or more spaces, then its description — and anything
@@ -51,6 +51,9 @@ var helpLines = []string{
 	"   [                 previous change",
 	"   c                 toggle change markers",
 	"   s                 toggle deleted lines",
+	"",
+	" FILE",
+	"   changes           followed automatically (-no-watch to stop)",
 	"",
 	" MOUSE",
 	"   left click        set cursor / start selection",

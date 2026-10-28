@@ -61,6 +61,10 @@ func (c *HlCache) Install(from int, runs [][]StyleRun) {
 	c.from, c.runs = from, runs
 }
 
+// Clear empties the window. Runs name byte ranges of a particular version of
+// the file, so a reload makes every cached run meaningless.
+func (c *HlCache) Clear() { c.from, c.runs = 0, nil }
+
 // hlRequest is a window of lines to tokenise.
 type hlRequest struct {
 	from, to int

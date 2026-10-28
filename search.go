@@ -21,7 +21,7 @@ type Match struct {
 
 // scanMatches returns every occurrence of needle, in document order.
 //
-// The scan runs over the whole mapping in one pass rather than line by line,
+// The scan runs over the whole buffer in one pass rather than line by line,
 // finding candidates with IndexByte — which is a vectorised assembly routine —
 // and only then verifying and locating them. A hand-rolled byte loop over 10 MB
 // costs several cycles per byte; this costs a fraction of one.

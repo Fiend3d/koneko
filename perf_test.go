@@ -36,7 +36,8 @@ func benchApp(b *testing.B, w, h uint16) *App {
 	return a
 }
 
-// BenchmarkOpenAndIndex builds the line index: one memchr pass over the mapping.
+// BenchmarkOpenAndIndex reads the file and builds the line index: one read,
+// then one memchr pass over the buffer.
 func BenchmarkOpenAndIndex(b *testing.B) {
 	if _, err := os.Stat(benchFile); err != nil {
 		b.Skipf("no benchmark corpus: %v", err)
@@ -52,7 +53,7 @@ func BenchmarkOpenAndIndex(b *testing.B) {
 	}
 }
 
-// BenchmarkLineRandomAccess is a slice of the mapping, not a syscall.
+// BenchmarkLineRandomAccess is a slice of the buffer, not a syscall.
 func BenchmarkLineRandomAccess(b *testing.B) {
 	fb := benchCorpus(b)
 	n := fb.LineCount()

@@ -26,6 +26,7 @@ type Options struct {
 	Highlight   bool
 	GitChanges  bool
 	Deleted     bool
+	Watch       bool
 	Search      string
 	Select      string
 	Theme       string
@@ -54,14 +55,25 @@ func run() error {
 
 	app := NewApp(fb, opts)
 
+	// The file is watched so the viewer follows something it does not own: an
+	// editor, a formatter, git or a coding agent changes it and the view follows
+	// a moment later. The reading happens on the watcher's goroutine, so a
+	// reload never shows up as a hitch in a frame.
+	var reloads <-chan *FileBuffer
+	if opts.Watch {
+		w := WatchFile(opts.File, fb, pollInterval)
+		defer w.Stop()
+		reloads = w.Events()
+	}
+
 	// Git runs alongside terminal setup rather than after it, and reports
 	// whenever it finishes; nothing waits on it. Cancelling on exit kills a git
 	// still running, and the buffered channel lets its goroutine finish either
 	// way.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	gitResults := make(chan GitChanges, 1)
-	app.AttachGitLoader(func() { go loadGitChanges(ctx, opts.File, gitResults) })
+	gitResults := make(chan gitResult, 1)
+	app.AttachGitLoader(func(gen uint64) { go loadGitChanges(ctx, opts.File, gen, gitResults) })
 	app.RequestGitChanges()
 
 	// RecoverAndRestore puts the terminal back if anything below panics, so a
@@ -119,7 +131,13 @@ func run() error {
 		case r := <-hlResults:
 			app.InstallHighlight(r)
 		case c := <-gitResults:
-			app.InstallGitChanges(c)
+			// A diff of a document that has since been reloaded says nothing
+			// about the one on screen.
+			if c.gen == app.GitGen() {
+				app.InstallGitChanges(c.changes)
+			}
+		case next := <-reloads:
+			app.Reload(next)
 		}
 
 		// Drain whatever else is already queued before drawing again. A fast
@@ -137,7 +155,11 @@ func run() error {
 			case r := <-hlResults:
 				app.InstallHighlight(r)
 			case c := <-gitResults:
-				app.InstallGitChanges(c)
+				if c.gen == app.GitGen() {
+					app.InstallGitChanges(c.changes)
+				}
+			case next := <-reloads:
+				app.Reload(next)
 			default:
 				draining = false
 			}
@@ -175,6 +197,7 @@ func parseFlags() (Options, bool) {
 	noHighlight := flag.Bool("no-highlight", false, "disable syntax highlighting")
 	noGit := flag.Bool("no-git", false, "disable git change markers")
 	noDeleted := flag.Bool("no-deleted-lines", false, "start with deleted lines hidden")
+	noWatch := flag.Bool("no-watch", false, "do not follow changes made to the file elsewhere")
 	flag.StringVar(&o.Search, "search", "", "search string")
 	flag.StringVar(&o.Select, "select", "", "selection range (e.g. 1:7-1:10)")
 	flag.StringVar(&o.Theme, "theme", defaultTheme,
@@ -194,6 +217,7 @@ func parseFlags() (Options, bool) {
 	o.Highlight = !*noHighlight
 	o.GitChanges = !*noGit
 	o.Deleted = !*noDeleted
+	o.Watch = !*noWatch
 
 	if flag.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "Usage: koneko [options] <file>\n\n")

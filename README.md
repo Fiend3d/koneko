@@ -31,7 +31,11 @@ syntax highlighting, git change markers and correct Unicode.
 ## Features
 
 ### Viewing
-- The file is memory-mapped, so large files open immediately and scroll smoothly.
+- The file is read once into memory at open, so large files open fast and
+  scroll smoothly, and `koneko` never holds a lock on the file it is showing.
+- It follows the file. If something else writes it — an editor, a formatter,
+  git, a coding agent — the view updates a moment later, keeping the line you
+  were reading, the selection, and the search. `-no-watch` turns that off.
 - Line numbers and a draggable scrollbar, each togglable.
 - Horizontal scrolling that stops at the widest visible line, so you can't
   scroll off into empty space.
@@ -136,6 +140,7 @@ koneko [OPTIONS] <FILE>
 | `-no-highlight` | Start with syntax highlighting off |
 | `-no-git` | Don't show git change markers |
 | `-no-deleted-lines` | Start with deleted lines hidden |
+| `-no-watch` | Don't follow changes made to the file elsewhere |
 | `-search=TEXT` | Open with `TEXT` searched and the first match shown |
 | `-select=L:C-L:C` | Open with a range selected (1-based line and character) |
 | `-v`, `-version` | Print the version and exit |
@@ -218,7 +223,9 @@ koneko -select=120:5-124:1 server.log
 - **~110 µs** per frame at 80×24 and **~480 µs** at 200×50, so drawing is
   never the bottleneck.
 - **6 allocations per frame** (about 175 bytes), whatever the terminal size.
-- **Zero CPU while idle.** The event loop blocks until something happens.
+- **Nothing drawn while idle.** The event loop blocks until something happens.
+  The only steady work is one `Stat` per quarter second, watching for the file
+  changing elsewhere; `-no-watch` gives even that back.
 - **One frame per burst.** A fast wheel spin or drag is drawn once, not once
   per event.
 
@@ -386,11 +393,30 @@ rule is verified rather than assumed.
 
 <br>
 
-The file is memory-mapped for the life of the process. It stays open, and
-truncating or overwriting it underneath a running `koneko` is undefined. The
-Bubble Tea version also held the file open for its whole session, so this is not
-a new restriction in practice, but mapping makes the failure mode a fault rather
-than a short read.
+The file is read once, at open, and the handle is closed immediately, so
+`koneko` never locks a file its reader is editing somewhere else. A watcher then
+checks the file a few times a second and reloads it when it changes, which is
+what a viewer with no editing of its own has to do. Even the milliseconds a
+reload takes are shared: on Windows the file is opened with
+`FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE` rather than the first
+two `os.Open` asks for, because without the third a rename-over save fails with
+"the process cannot access the file because it is being used by another process"
+for as long as any handle is open.
+
+Earlier versions mapped the file for the life of the process, which cost two
+things a snapshot does not. On Windows a mapped section blocks every other
+writer — an editor, `git`, a coding agent — with "the process cannot access the
+file because it is being used by another process", so `koneko` effectively
+locked the file it was showing. And a write that did get through changed the
+bytes underneath a line table built from the old layout, which garbled the
+text. Mapping saved a few milliseconds of open time; the snapshot costs one
+buffer the size of the file and leaves every hot path a slice of it.
+
+The watcher polls with `Stat` rather than subscribing to the OS, so a change is
+noticed within about a quarter of a second rather than instantly, and a version
+is only read once it has been seen twice — which is what keeps a half-written
+file from ever reaching the screen. A file whose size and timestamp are both
+unchanged is a file the watcher cannot tell from the one it has.
 
 Unicode segmentation and terminal widths belong to catatui. Koneko uses
 `catatui.SegmentGraphemes` to build byte-to-column tables and expand tabs, and
